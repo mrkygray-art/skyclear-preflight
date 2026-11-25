@@ -249,7 +249,7 @@ function render(){
   const loading=S.wx.mode==="loading";
   const ge0=groundElev(),g0=effGrid(),gridOk=g0!=null,cap0=gridOk?Math.min(400,g0):400,unk=controlled&&!gridOk;
   const altl=`<div class="altline"><div><span>Fly up to</span><b>${cap0} ft AGL</b></div><div><span>Equals</span><b>${ge0.ft==null?"? ft MSL":(ge0.ft+cap0)+" ft MSL"}</b></div><div><span>Ground here</span><b>${ge0.ft==null?"?":ge0.ft} ft MSL</b></div><div class="authl ${controlled?"need":"none"}"><span>Authorization</span><b>${controlled?(S.laanc?"LAANC "+esc(S.laanc.toUpperCase()):"LAANC needed"):"None needed"}</b></div></div>${unk?`<p class="altwarn">Ceiling not confirmed. In controlled airspace the LAANC grid can be lower than 400 ft. Use the altitude in your LAANC approval.</p>`:""}`;
-  laancNow(loading,controlled,cap0,gridOk,ge0);
+  laancNow(loading,controlled,cap0,gridOk,ge0);resWxLink(D);
   $("#banner").innerHTML=loading?`<div class="banner b-info"><div class="big">Scanning…</div><p>Reading position, airspace and weather.</p></div>`:`<div class="banner b-${ov.k}"><div class="big">${ov.t}</div><p>${esc(ov.d)}</p></div>${altl}`;
   $("#badge").textContent=S.wx.mode==="live"?"Live weather":S.wx.mode==="loading"?"Loading":"Preview · sample weather";
   $("#badge").className="badge "+(S.wx.mode==="live"?"ok":"");
@@ -443,16 +443,17 @@ function mapUpdate(fit){
 function mapSize(){if(MAP)setTimeout(()=>MAP.invalidateSize(),50)}
 
 /* ---- tabs ---- */
+const TABS={pre:"preflight",laanc:"laanc",req:"requirements",res:"resources"};
 function showTab(){
-  const h=(location.hash||"").replace("#",""),t=h==="requirements"?"req":h==="laanc"?"laanc":"pre";
-  $("#view-pre").hidden=t!=="pre";$("#view-req").hidden=t!=="req";$("#view-laanc").hidden=t!=="laanc";
+  const h=(location.hash||"").replace("#",""),t=Object.keys(TABS).find(k=>TABS[k]===h)||"pre";
+  $("#view-pre").hidden=t!=="pre";$("#view-req").hidden=t!=="req";$("#view-laanc").hidden=t!=="laanc";$("#view-res").hidden=t!=="res";
   document.querySelectorAll("[data-tab]").forEach(b=>b.setAttribute("aria-current",b.dataset.tab===t?"page":"false"));
   $(".locbar").style.display=t==="pre"?"":"none";$("#gpsmsg").style.display=t==="pre"?"":"none";$("#addrlist").style.display=t==="pre"?"":"none";
   if(t==="pre")mapSize();
   window.scrollTo(0,0);
 }
 window.addEventListener("hashchange",showTab);
-document.addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b){e.preventDefault();location.hash=b.dataset.tab==="req"?"requirements":b.dataset.tab==="laanc"?"laanc":"preflight"}});
+document.addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b){e.preventDefault();location.hash=TABS[b.dataset.tab]||"preflight"}});
 
 function reqHTML(){
   const card=(h,b)=>`<section class="grp"><h2>${h}</h2><div class="req">${b}</div></section>`;
@@ -526,6 +527,61 @@ function laancHTML(){
   </ul><p class="note">Contact details were checked on each company's website on Nov 25, 2026. SkyClear is not affiliated with Aloft or Airspace Link.</p></div></section>`;
 }
 
+/* ---- Resources tab ---- */
+// Every URL and phone number below was checked on 2026-11-25 (FAA UAS Support Center number and
+// email from faa.gov/uas/contact_us; NOTAM Search is the link on the FAA's own NOTAM page).
+const RES_METAR_IDS="KLAX,KHHR,KBUR,KTOA,KSMO,KLGB";
+const RES={
+  tfr:"https://tfr.faa.gov/",
+  notam:"https://notams.aim.faa.gov/notamSearch/",
+  metar:"https://aviationweather.gov/data/metar/?ids="+RES_METAR_IDS,
+  parks:"https://www.parks.ca.gov/?page_id=29229"
+};
+function resHTML(){
+  const ext=(u,t)=>`<a href="${u}" target="_blank" rel="noopener">${t}<span class="sr"> (opens in a new tab)</span> ↗</a>`;
+  const aloft=LAANC_APPS[0],airhub=LAANC_APPS[1];
+  const row=(link,desc)=>`<li><span class="rl">${link}</span><span class="rd">${desc}</span></li>`;
+  const sec=(id,h,items)=>`<section class="grp" id="${id}"><h2>${h}</h2><ul class="rlist">${items.join("")}</ul></section>`;
+  return `<div class="reqhead"><h1>Drone Pilot Resources</h1><p>Official sources for current restrictions, weather and rules. SkyClear links to them; always check the source itself for the latest information before you fly.</p></div>
+  <nav class="quick" aria-label="Quick links">
+   <a class="qk" href="${RES.tfr}" target="_blank" rel="noopener"><b>TFRs</b><small>FAA temporary flight restrictions</small></a>
+   <a class="qk" href="${RES.notam}" target="_blank" rel="noopener"><b>NOTAMs</b><small>FAA NOTAM Search</small></a>
+   <a class="qk" id="qk-wx" href="${RES.metar}" target="_blank" rel="noopener"><b>Weather</b><small id="qk-wx-ids">METARs: ${RES_METAR_IDS.replace(/,/g,", ")}</small></a>
+   <a class="qk" href="${RES.parks}" target="_blank" rel="noopener"><b>Launch Site Rules</b><small>California State Parks drone rules</small></a>
+  </nav>
+  ${sec("res-airspace","Airspace and authorization",[
+    row(ext(aloft.web[1],"Aloft Air Control"),"Airspace checks and LAANC authorization. Step-by-step guide on the <a href=\"#laanc\">LAANC tab</a>."),
+    row(ext(airhub.web[1],"AirHub Portal (Airspace Link)"),"Airspace checks and authorization. Step-by-step guide on the <a href=\"#laanc\">LAANC tab</a>."),
+    row(ext("https://www.faa.gov/uas/getting_started/temporary_flight_restrictions","FAA Temporary Flight Restrictions"),"Check active and upcoming TFRs. Verify the boundaries, altitude and effective times for your flight."),
+    row(ext(RES.notam,"FAA NOTAM Search"),"Check notices for the flight area and nearby airports. Example identifiers: KLAX, KHHR, KBUR, KTOA, KSMO, KLGB."),
+    row(ext("https://www.faa.gov/uas/commercial_operators/uas_facility_maps","FAA UAS Facility Maps"),"The altitude grid at your exact flight location. Get FAA authorization where it is required.")])}
+  ${sec("res-weather","Weather",[
+    row(ext(RES.metar,"SoCal METARs"),"Timestamped observations for LAX, Hawthorne, Burbank, Torrance, Santa Monica and Long Beach."),
+    row(ext("https://www.weather.gov/","NWS Local Forecast"),"The forecast for the launch site. Verify actual conditions before takeoff."),
+    row(ext("https://www.1800wxbrief.com/","Flight Service (1800wxbrief.com)"),"Official flight briefings, also by phone at 1-800-WX-BRIEF.")])}
+  ${sec("res-site","Launch site",[
+    row(ext(RES.parks,"California State Parks Drone Rules"),"Check the individual park or district's posted rules. For other sites, verify launch and landing rules with the land manager.")])}
+  ${sec("res-rules","Registration and rules",[
+    row(ext("https://faadronezone-access.faa.gov/","FAA DroneZone"),"Manage registration and submit applicable FAA authorization requests."),
+    row(ext("https://www.faa.gov/uas/getting_started/remote_id","FAA Remote ID"),"Remote ID requirements and compliance options."),
+    row(ext("https://www.faa.gov/uas/recreational_flyers","FAA Recreational Flying and TRUST"),"Recreational flying requirements and the TRUST test.")])}
+  ${sec("res-charts","Charts and communications",[
+    row(ext("https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dafd/","FAA Chart Supplement"),"Airport communications, weather sources and procedures. SkyClear's own FAA chart layers are on the <a href=\"#preflight\">Pre-flight map</a>.")])}
+  <section class="grp" id="res-phone"><h2>Phone numbers and coordination</h2><div class="scroll"><table class="tb"><thead><tr><th>Contact</th><th>Number</th><th>When</th></tr></thead><tbody>
+   <tr><td><b>Emergency services</b></td><td class="n"><a href="tel:911">911</a></td><td>An immediate threat to life or safety.</td></tr>
+   <tr><td><b>FAA UAS Support Center</b></td><td class="n"><a href="tel:+18443596982">844-359-6982</a><small><a href="mailto:UASHelp@faa.gov">UASHelp@faa.gov</a></small></td><td>Drone rules, registration and authorization questions.</td></tr>
+   <tr><td><b>Flight Service</b></td><td class="n"><a href="tel:+18009927433">1-800-WX-BRIEF</a><small>1-800-992-7433</small></td><td>Official weather and NOTAM briefings.</td></tr>
+   <tr><td><b>Site owner or land manager</b></td><td>Varies by site</td><td>Use the contact for the actual launch location.</td></tr>
+   <tr><td><b>ATC coordination</b></td><td>See your authorization</td><td>Use the contact in your authorization when coordination is required.</td></tr>
+  </tbody></table></div></section>
+  <section class="grp" id="res-107"><h2>Part 107 preflight reference<small>${ext("https://www.govinfo.gov/content/pkg/CFR-2025-title14-vol2/xhtml/CFR-2025-title14-vol2-sec107-49.html","14 CFR § 107.49")}</small></h2><div class="req">
+   <p>Before flight, the remote pilot in command reviews, as applicable:</p>
+   <ul><li>Local weather conditions</li><li>Local airspace and any flight restrictions</li><li>The location of persons and property on the surface, and other ground hazards</li><li>Crew roles, and emergency procedures briefed with everyone involved</li><li>Control links between the control station and the aircraft</li><li>Enough battery power for the planned flight</li><li>Any attached payload secured</li></ul>
+   <p class="note">Informational summary. Read the regulation at the link for the exact wording. SkyClear's checklist on the Pre-flight tab covers these items.</p></div></section>`;
+}
+// The Weather quick link follows the pilot's position: the 3 nearest reporting stations.
+function resWxLink(D){const a=$("#qk-wx"),s=$("#qk-wx-ids");if(!a||!D||!D.wxStations||!D.wxStations.length)return;const ids=D.wxStations.map(x=>x.icao).join(",");a.href="https://aviationweather.gov/data/metar/?ids="+ids;s.textContent="METARs near you: "+ids.replace(/,/g,", ")}
+
 /* ---- wiring ---- */
 $("#preset").innerHTML=`<option value="" disabled>Custom location</option>`+PRESETS.map(x=>`<option value="${x.k}">${x.name}</option>`).join("");
 $("#preset").onchange=e=>{const x=PRESETS.find(z=>z.k===e.target.value);if(!x)return;setLoc(x.lat,x.lon,"preset",x.name,{presetElev:x.elev})};
@@ -565,6 +621,7 @@ $("#lat").value=S.loc.lat.toFixed(5);$("#lon").value=S.loc.lon.toFixed(5);
 loadProfile();
 $("#view-req").innerHTML=reqHTML();
 $("#view-laanc").innerHTML=laancHTML();
+$("#view-res").innerHTML=resHTML();
 mapInit();showTab();
 $("#gpsmsg").textContent=DEV_FIXED_LOCATION?"Showing "+PRESETS[0].name+". Press Use my GPS, tap the map, or type coordinates.":"";
 loadAll();

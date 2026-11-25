@@ -28,6 +28,10 @@ Built while studying for the FAA Part 107 remote pilot exam, to answer one quest
 - Step-by-step request guides for two FAA-approved apps, **Aloft Air Control** and **Airspace Link AirHub Portal**, with support contacts checked on each company's own website. No contact detail is shown unless the company publishes it.
 - A field for the LAANC authorization number. Once entered, the airspace check passes and the number goes on the record.
 
+## Resources tab
+
+Quick links to FAA TFRs, FAA NOTAM Search, METARs for the 3 nearest stations, and California State Parks drone rules, plus a directory of official sources (LAANC apps, FAA UAS Facility Maps, DroneZone, Remote ID, TRUST, Chart Supplement, NWS, Flight Service), phone numbers (911, the FAA UAS Support Center, 1-800-WX-BRIEF) and a short 14 CFR 107.49 preflight reference.
+
 ## Rules the app follows
 
 - **The FAA is the source of truth.** Airspace, frequencies and altitudes come from FAA charts and FAA data layers. Nothing is invented: when a value isn't known, the app says *not confirmed*.

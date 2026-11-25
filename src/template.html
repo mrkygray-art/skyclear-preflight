@@ -162,7 +162,7 @@ table.bd{width:calc(100% - 32px);margin:2px 16px 4px;border-collapse:collapse;fo
 .actions button:hover{filter:brightness(1.25)}
 .copybox{margin:0 16px 14px;background:#fff;border:1px solid var(--paper-line);border-radius:5px;padding:8px;font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;max-height:160px;overflow:auto;display:none}
 
-.tabs{display:flex;gap:4px;margin-left:auto}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;margin-left:auto}
 .tabs button{background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);padding:8px 14px;cursor:pointer;font-family:var(--display);font-weight:600;font-size:18px;letter-spacing:.05em;text-transform:uppercase}
 .tabs button[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent)}
 .mapbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:16px;overflow:hidden}
@@ -183,7 +183,20 @@ table.bd{width:calc(100% - 32px);margin:2px 16px 4px;border-collapse:collapse;fo
 .fields small{display:block;font-size:12px;margin-top:3px;font-family:var(--body);text-transform:none;letter-spacing:0}
 .fields small.ok{color:var(--go)}.fields small.bad{color:var(--stop)}
 .reqhead{padding:22px 0 8px}.reqhead h1{margin:0;font-family:var(--display);font-size:34px;letter-spacing:.04em;text-transform:uppercase}.reqhead p{margin:4px 0 0;color:var(--muted);max-width:70ch}
-#view-req,#view-laanc{max-width:860px;padding-top:6px}
+#view-req,#view-laanc,#view-res{max-width:860px;padding-top:6px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.quick{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:6px 0 18px}
+.qk{display:block;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:12px 14px;color:var(--ink);text-decoration:none}
+.qk:hover{border-color:var(--accent)}
+.qk b{display:block;font-family:var(--display);font-size:22px;letter-spacing:.04em;text-transform:uppercase}
+.qk small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.rlist{list-style:none;margin:0;padding:4px 16px 10px}
+.rlist li{display:grid;grid-template-columns:minmax(200px,260px) 1fr;gap:12px;padding:9px 0;border-top:1px solid var(--line)}
+.rlist li:first-child{border-top:0}
+.rl a{color:var(--accent);font-weight:600}
+.rd{color:var(--muted);font-size:14px}.rd a{color:var(--accent)}
+#view-res .tb a{color:var(--accent)}
+@media(max-width:620px){.rlist li{grid-template-columns:1fr;gap:2px}}
 .req h3{margin:14px 0 6px;font-family:var(--display);font-size:17px;letter-spacing:.05em;text-transform:uppercase}
 .steps{margin:0;padding-left:22px}.steps li{margin:0 0 6px}
 .tb.kv th{width:130px;border-top:1px solid var(--line);padding:7px 10px 7px 0;vertical-align:top}.tb.kv td{padding:7px 0}
@@ -208,7 +221,7 @@ table.bd{width:calc(100% - 32px);margin:2px 16px 4px;border-collapse:collapse;fo
 <body>
 <header>
   <div class="wrap">
-    <div class="top"><div class="brand">Sky<span>Clear</span> <span style="color:var(--muted);font-weight:600;font-size:18px">Pre-Flight · SoCal</span></div><span class="badge" id="badge">Loading</span><nav class="tabs" aria-label="Sections"><button data-tab="pre" aria-current="page">Pre-flight</button><button data-tab="laanc" aria-current="false">LAANC</button><button data-tab="req" aria-current="false">Requirements</button></nav></div>
+    <div class="top"><div class="brand">Sky<span>Clear</span> <span style="color:var(--muted);font-weight:600;font-size:18px">Pre-Flight · SoCal</span></div><span class="badge" id="badge">Loading</span><nav class="tabs" aria-label="Sections"><button data-tab="pre" aria-current="page">Pre-flight</button><button data-tab="laanc" aria-current="false">LAANC</button><button data-tab="req" aria-current="false">Requirements</button><button data-tab="res" aria-current="false">Resources</button></nav></div>
     <div class="locbar">
       <button class="pri" id="gps">Use my GPS</button>
       <div class="addrf"><label for="addr">Address or place</label><input id="addr" type="search" autocomplete="street-address" placeholder="Street address, city, or a place name" enterkeyhint="search"></div>
@@ -234,6 +247,7 @@ table.bd{width:calc(100% - 32px);margin:2px 16px 4px;border-collapse:collapse;fo
 </main>
 <div id="view-req" hidden></div>
 <div id="view-laanc" hidden></div>
+<div id="view-res" hidden></div>
 </div>
 <script src="leaflet.js"></script>
 <script>
