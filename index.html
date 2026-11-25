@@ -176,9 +176,17 @@ table.bd{width:calc(100% - 32px);margin:2px 16px 4px;border-collapse:collapse;fo
 .maplegend{display:flex;flex-wrap:wrap;gap:4px 14px;padding:8px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
 .maplegend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 .leaflet-container{font-family:var(--body)}
-.apt{position:relative}
-.apd{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:#111;border:2px solid #fff}
-.apl{position:absolute;left:7px;top:-9px;font:600 11px var(--mono);color:#111;background:rgba(255,255,255,.85);padding:0 3px;border-radius:2px;white-space:nowrap}
+.apt{cursor:pointer} /* no position rule: Leaflet places marker icons absolutely */
+#map.apt-nolabel .apl{display:none}
+.apop{font:13px/1.35 var(--body);color:#122030}
+.apop .aph{display:flex;align-items:center;gap:6px;font-family:var(--display);font-size:19px}.apop .aph small{font:12px var(--mono);color:#566a7d}
+.apop .apn{margin:2px 0 6px;font-weight:600}.apop .apn small{font-weight:400;color:#566a7d}
+.apop table{border-collapse:collapse;width:100%}.apop th{text-align:left;vertical-align:top;font:600 10.5px var(--mono);text-transform:uppercase;color:#566a7d;padding:4px 8px 4px 0;white-space:nowrap}.apop td{padding:4px 0;border-top:1px solid #e3e9ef;vertical-align:top;overflow-wrap:anywhere}.apop th{border-top:1px solid #e3e9ef}
+.apop small{color:#566a7d}.apop .unk{color:#a86400;font-weight:600}.apop .muted{color:#566a7d}
+.apop .apl2{margin-top:8px}.apop .apl2 a{color:#0b63b8;font-weight:600}.apop .aps{margin-top:6px;font-size:11px;color:#566a7d}
+@media(max-width:520px){.apop th{white-space:normal;width:34%}.apop{font-size:12.5px}}
+.apd{position:absolute;left:2px;top:2px;width:8px;height:8px;border-radius:50%;background:#111;border:2px solid #fff}
+.apl{position:absolute;left:15px;top:-1px;font:600 11px var(--mono);color:#111;background:rgba(255,255,255,.85);padding:0 3px;border-radius:2px;white-space:nowrap}
 .fields select{width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:8px 10px;font-family:var(--mono);font-size:14px}
 .fields small{display:block;font-size:12px;margin-top:3px;font-family:var(--body);text-transform:none;letter-spacing:0}
 .fields small.ok{color:var(--go)}.fields small.bad{color:var(--stop)}
@@ -869,6 +877,7 @@ function mapInit(){
   MAP.attributionControl.addAttribution("Charts: FAA Los Angeles and San Francisco VFR Sectionals, San Diego VFR Terminal Area Chart");
   L.control.scale({imperial:true,metric:false,position:"bottomleft"}).addTo(MAP);
   MAPL=L.layerGroup().addTo(MAP);
+  MAP.on("zoomend",aptLabels);aptLabels();loadAirports();
   MAP.on("click",e=>{if(!PIN)return;setPin(false);setLoc(e.latlng.lat,e.latlng.lng,"manual","Dropped pin",{pin:true,pinOk:false});$("#gpsmsg").textContent="Pin dropped. If it sits exactly on your launch spot, press Confirm pin under the map."});
   $("#pinok").onclick=()=>{if(!S.loc.pin)return;S.loc.pinOk=true;$("#gpsmsg").textContent="Pin confirmed as your launch spot.";render()};
   $("#chartop").oninput=e=>{CHARTS.forEach(c=>c.setOpacity(e.target.value/100));$("#chartopv").textContent=e.target.value+"%"};
@@ -889,8 +898,8 @@ function mapUpdate(fit){
     const ri=ringInfo(ap);
     if(ap.cls==="B"){L.circle([ap.lat,ap.lon],{radius:6*NM*MI,color:"#7b5cff",weight:2,dashArray:"6 5",fillColor:"#7b5cff",fillOpacity:.08,interactive:false}).addTo(MAPL)}
     else if(ri){const col=ap.cls==="C"?"#c04bff":"#1a9bff";L.circle([ap.lat,ap.lon],{radius:ri.r*NM*MI,color:col,weight:2,fillColor:col,fillOpacity:.1,interactive:false}).addTo(MAPL)}
-    if(ap.dist<=Math.max(S.radius*2.5,12)){
-      L.marker([ap.lat,ap.lon],{interactive:true,keyboard:false,icon:L.divIcon({className:"apt",html:'<span class="apd"></span><span class="apl">'+esc(ap.id)+"</span>",iconSize:[0,0]})}).bindTooltip(esc(ap.id)+" · "+esc(ap.name)+(ap.cls?" · Class "+ap.cls:" · no tower")+" · "+fmt1(ap.dist)+" mi",{direction:"top"}).addTo(MAPL)}
+    if(!AIRL&&ap.dist<=Math.max(S.radius*2.5,12)){ // fallback until the FAA airport layer has loaded
+      L.marker([ap.lat,ap.lon],{interactive:true,keyboard:false,icon:L.divIcon({className:"apt",html:'<span class="apd"></span><span class="apl">'+esc(ap.id)+"</span>",iconSize:[16,16],iconAnchor:[8,8]})}).bindTooltip(esc(ap.id)+" · "+esc(ap.name)+(ap.cls?" · Class "+ap.cls:" · no tower")+" · "+fmt1(ap.dist)+" mi",{direction:"top"}).addTo(MAPL)}
   });
   // search radius
   L.circle(ll,{radius:S.radius*MI,color:"#0a7d4d",weight:2,dashArray:"2 6",fill:false,interactive:false}).addTo(MAPL);
@@ -899,6 +908,79 @@ function mapUpdate(fit){
   if(fit){const dy=S.radius*1.15/69.0,dx=dy/Math.cos(toRad(Lc.lat));MAP.fitBounds([[Lc.lat-dy,Lc.lon-dx],[Lc.lat+dy,Lc.lon+dx]],{animate:false,maxZoom:15})}
 }
 function mapSize(){if(MAP)setTimeout(()=>MAP.invalidateSize(),50)}
+
+/* ---- airports on the map: every public-use airport, click/tap for details ----
+   Source: FAA airport data (US_Airport layer, same FAA ArcGIS org as the airspace layers).
+   Frequencies: SkyClear's chart list (tower, ground, ATIS, approach) for the airports it has;
+   otherwise the FAA Services/Frequencies layers, which carry weather and ATIS frequencies only.
+   Tower and CTAF frequencies are never guessed: the popup points to the Chart Supplement. */
+const FAA_ARC="https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/";
+let AIRL=null,APTS=[],APTS_OK=false;const APT_INFO={};
+const FREQNAME={"ATIS":"ATIS","ATIS-ARR":"ATIS arrival","ATIS-DEP":"ATIS departure","ASOS":"ASOS weather","AWOS1":"AWOS weather","AWOS2":"AWOS weather","AWOS3":"AWOS weather","AWOS3P":"AWOS weather","AWOS3PT":"AWOS weather","AWOS3T":"AWOS weather","AWOSAV":"AWOS weather","FSS":"Flight Service","RCAG":"Center (RCAG)","RCOM":"Flight Service (RCO)","TWEB":"TWEB"};
+async function loadAirports(){
+  try{
+    const w=encodeURIComponent("TYPE_CODE='AD' AND PRIVATEUSE=0 AND OPERSTATUS='OPERATIONAL'");
+    const j=await fetchJson(FAA_ARC+"US_Airport/FeatureServer/0/query?where="+w+"&geometry=-125,31.99,-114.5,40.21&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=GLOBAL_ID,IDENT,NAME,ELEVATION,ICAO_ID,SERVCITY,MIL_CODE&outSR=4326&f=json",12000);
+    if(!j.features||!j.features.length)throw new Error("no airports");
+    APTS=j.features.map(f=>{const a=f.attributes,loc=AIRPORTS.find(x=>x.id===a.IDENT)||null;
+      return {gid:a.GLOBAL_ID,id:a.IDENT,icao:a.ICAO_ID||null,name:a.NAME||a.IDENT,city:a.SERVCITY||"",elev:a.ELEVATION,mil:a.MIL_CODE,lat:f.geometry.y,lon:f.geometry.x,loc}});
+    // SkyClear's chart list airports the FAA query did not return (none expected) still get a marker
+    AIRPORTS.forEach(x=>{if(!APTS.some(a=>a.id===x.id))APTS.push({gid:null,id:x.id,icao:x.icao,name:x.name,city:"",elev:null,mil:null,lat:x.lat,lon:x.lon,loc:x})});
+    APTS_OK=true;
+  }catch(e){APTS_OK=false;APTS=AIRPORTS.map(x=>({gid:null,id:x.id,icao:x.icao,name:x.name,city:"",elev:null,mil:null,lat:x.lat,lon:x.lon,loc:x}))}
+  drawAirports();
+}
+function drawAirports(){
+  if(!MAP)return;if(AIRL)AIRL.clearLayers();else AIRL=L.layerGroup().addTo(MAP);
+  APTS.forEach(a=>{
+    const cls=a.loc&&a.loc.cls?" · Class "+a.loc.cls:"";
+    L.marker([a.lat,a.lon],{keyboard:false,title:a.id+" "+a.name,icon:L.divIcon({className:"apt",html:'<span class="apd"></span><span class="apl">'+esc(a.id)+"</span>",iconSize:[16,16],iconAnchor:[8,8]})})
+      .bindTooltip(esc(a.id)+" · "+esc(a.name)+cls+" · click for details",{direction:"top"})
+      .bindPopup(()=>aptPopup(a),{maxWidth:Math.max(200,Math.min(320,MAP.getSize().x-110)),minWidth:Math.max(200,Math.min(240,MAP.getSize().x-110)),autoPanPaddingTopLeft:[52,10],autoPanPaddingBottomRight:[10,10]})
+      .on("popupopen",e=>aptDetails(a,e.popup))
+      .addTo(AIRL);
+  });
+  mapUpdate(false); // drop the fallback markers drawn before the FAA list arrived
+}
+function aptPopup(a){
+  const L0=S.loc,d=distMi(L0.lat,L0.lon,a.lat,a.lon),brg=compass(bearing(L0.lat,L0.lon,a.lat,a.lon)),loc=a.loc,I=APT_INFO[a.id]||{};
+  const r=(k,v)=>`<tr><th>${k}</th><td>${v}</td></tr>`;
+  let rows=r("Distance",fmt1(d)+" mi "+brg+" of you <small>("+fmt1(d/NM)+" NM)</small>");
+  rows+=r("Field elevation",a.elev!=null?Math.round(a.elev)+" ft MSL":"<span class=\"unk\">not confirmed</span>");
+  rows+=r("Airspace at field",I.cls===undefined?"<span class=\"muted\">checking FAA layer…</span>":I.cls===null?"<span class=\"unk\">not checked (FAA layer unavailable)</span>":esc(I.cls));
+  if(loc&&loc.twr){
+    rows+=r("Tower hours",esc(loc.hrs||"not confirmed"))+r("Tower",esc(loc.twr))+r("Ground",esc(loc.gnd||"not on list"))+r("ATIS",esc(loc.atis||"not on list"))+(loc.app?r("Approach",esc(loc.app)):"");
+  }else{
+    rows+=r("Weather / ATIS",I.freq===undefined?"<span class=\"muted\">checking FAA layer…</span>":I.freq===null?"<span class=\"unk\">not checked (FAA layer unavailable)</span>":I.freq.length?I.freq.map(f=>esc(f)).join("<br>"):"<span class=\"muted\">none listed by the FAA</span>");
+    rows+=r("Tower / CTAF","<span class=\"unk\">not in SkyClear's data</span> <small>check the Chart Supplement</small>");
+  }
+  const src=loc&&loc.twr?"Frequencies: "+esc(CHART.name)+" ("+esc(CHART.from)+" to "+esc(CHART.to)+").":"Frequencies: FAA weather and ATIS data.";
+  const links=[a.icao?`<a href="https://aviationweather.gov/data/metar/?ids=${encodeURIComponent(a.icao)}" target="_blank" rel="noopener">METAR / TAF ↗</a>`:"",`<a href="https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dafd/" target="_blank" rel="noopener">Chart Supplement ↗</a>`].filter(Boolean).join(" · ");
+  return `<div class="apop"><div class="aph"><b>${esc(a.id)}</b>${a.icao&&a.icao!==a.id?` <small>${esc(a.icao)}</small>`:""} ${loc?classPill(loc):""}</div><div class="apn">${esc(a.name)}${a.city?` <small>· ${esc(a.city.replace(/\b\w+/g,w=>w[0]+w.slice(1).toLowerCase()))}</small>`:""}${a.mil&&a.mil!=="CIVIL"?` <small>· ${esc(a.mil.toLowerCase())}</small>`:""}</div><table>${rows}</table><div class="apl2">${links}</div><div class="aps">${src} Airport data: FAA. Check the Chart Supplement before contacting a facility.</div></div>`;
+}
+async function aptDetails(a,popup){
+  const I=APT_INFO[a.id]=APT_INFO[a.id]||{},refresh=()=>{if(popup.isOpen())popup.setContent(aptPopup(a))};
+  const jobs=[];
+  if(I.cls===undefined)jobs.push((async()=>{try{
+    const j=await fetchJson(FAA_ARC+"Class_Airspace/FeatureServer/0/query?where=1%3D1&geometry="+a.lon+"%2C"+a.lat+"&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=CLASS,NAME,LOWER_VAL&returnGeometry=false&f=json",9000);
+    if(!j.features)throw 0;
+    const s=[...new Set(j.features.map(f=>f.attributes).filter(x=>x.CLASS&&["B","C","D","E"].includes(String(x.CLASS).toUpperCase())&&Number(x.LOWER_VAL)<=0).map(x=>"Class "+String(x.CLASS).toUpperCase()+(x.NAME?" ("+x.NAME+")":"")))];
+    I.cls=s.length?s.join(", "):"Class G at the surface (no controlled surface area)";
+  }catch(e){I.cls=null}refresh()})());
+  if(I.freq===undefined&&!(a.loc&&a.loc.twr))jobs.push((async()=>{try{
+    if(!a.gid){I.freq=[];return refresh()}
+    const sv=await fetchJson(FAA_ARC+"Services/FeatureServer/0/query?where="+encodeURIComponent("REF_ID='"+a.gid+"'")+"&outFields=GLOBAL_ID,TYPE_CODE,WKHR_CODE,WKHR_RMK&f=json",9000);
+    if(!sv.features)throw 0;
+    const svc=sv.features.map(f=>f.attributes);
+    if(!svc.length){I.freq=[];return refresh()}
+    const fr=await fetchJson(FAA_ARC+"Frequencies/FeatureServer/0/query?where="+encodeURIComponent("SERVICE_ID IN ("+svc.map(s=>"'"+s.GLOBAL_ID+"'").join(",")+")")+"&outFields=SERVICE_ID,FREQ_TRANS&f=json",9000);
+    if(!fr.features)throw 0;
+    I.freq=svc.map(s=>{const f=fr.features.map(x=>x.attributes).filter(x=>x.SERVICE_ID===s.GLOBAL_ID).map(x=>x.FREQ_TRANS).filter(x=>x!=null).map(x=>String(+Number(x).toFixed(3)));if(!f.length)return null;
+      const hrs=s.WKHR_CODE==="H24"?" (24 h)":s.WKHR_RMK?" ("+s.WKHR_RMK+")":"";return (FREQNAME[s.TYPE_CODE]||s.TYPE_CODE)+": "+f.join(", ")+hrs}).filter(Boolean);
+  }catch(e){I.freq=null}refresh()})());
+  await Promise.all(jobs);
+}
+function aptLabels(){if(MAP)$("#map").classList.toggle("apt-nolabel",MAP.getZoom()<9)}
 
 /* ---- tabs ---- */
 const TABS={pre:"preflight",laanc:"laanc",req:"requirements",res:"resources"};
