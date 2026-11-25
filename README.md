@@ -40,14 +40,14 @@ Built while studying for the FAA Part 107 remote pilot exam, to answer one quest
 
 - **No framework, no build step on Vercel.** `index.html` is generated from `src/template.html`, `src/core.js` (airports, decoders, sun times) and `src/ui.js` (UI, map, loading) by `python3 src/build.py`.
 - **`api/wx.js`:** a small Vercel serverless relay to aviationweather.gov (the API doesn't allow calls straight from a web page). Only `metar` and `taf` are allowed, inputs are checked, and responses are cached for 60 seconds.
-- **Map:** Leaflet 1.9.4 over Esri World Street Map, with FAA charts as overlays: the Los Angeles sectional basin, the San Francisco sectional and the San Diego terminal area chart, georeferenced from FAA PDFs and cut into WebP tiles (`s/`, `d/`, `chart-basin.jpg`).
+- **Map:** Leaflet 1.9.4 over Esri World Street Map, with FAA charts as overlays: the full Los Angeles sectional (`l/`, cut from the FAA's own georeferenced GeoTIFF with the legend, tables and Basin inset removed), plus the San Francisco sectional (`s/`) and the San Diego terminal area chart (`d/`), georeferenced from FAA PDFs. All are WebP tiles.
 - **`api/geo.js`:** address lookup relay. It asks OpenStreetMap's Nominatim first (addresses and place names, United States only, © OpenStreetMap contributors), then the US Census Bureau geocoder if OpenStreetMap finds nothing. No keys; results are cached for a day, and matches within about 200 m of each other are merged.
 - **Other public data:** USGS elevation service (ground elevation), National Weather Service (place name), FAA airspace and UAS Facility Map layers on ArcGIS.
 - **Installable app (PWA):** `manifest.webmanifest`, app icons, and `sw.js`, a network-first service worker for the app shell only. It never touches `/api/` or other sites.
 
 ## Known gaps
 
-- Airport, tower and frequency data covers Southern California only. Central California between the LA and SF charts is street map only.
+- Airport, tower and frequency data covers Southern California only. Charts now cover the whole Los Angeles sectional (Big Sur to Blythe, Lemoore to the border) and the San Francisco sectional, with no gap between them.
 - TFRs, NOTAMs and special use airspace are not read yet; the checklist sends the pilot to tfr.faa.gov and the FAA NOTAM search.
 
 ## Run it locally

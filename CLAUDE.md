@@ -27,7 +27,7 @@ Drone pilot pre-flight clearance web app for Ky (Part 107 student, Southern Cali
 - Tabs (hash routes): Pre-flight, LAANC (`#laanc`, `laancHTML()`), Requirements (with FAA offices reference). The LAANC tab lists Aloft Air Control and Airspace Link AirHub Portal (contacts checked on their own sites 2026-11-25; Aloft publishes no phone, so none is shown); its `#laanc2` field mirrors the Pre-flight `#laanc` field (`S.laanc`).
 - Pilot/drone/Remote ID fields (`PROFILE_KEYS`) are saved in localStorage `skyclear.profile.v1` on the device only, with a "Clear saved info" button. The LAANC number is per flight and not saved.
 - Installable app (PWA): `manifest.webmanifest`, `sw.js`, `favicon.ico`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png`. The service worker is network-first for the app shell only and must never cache `/api/` or other sites. Bump `CACHE` in `sw.js` if the shell list changes.
-- `s/` San Francisco sectional tiles, `d/` San Diego TAC tiles (`{z}/{x}/{y}.webp`, 512 px, Leaflet `zoomOffset:-1`), `chart-basin.jpg` LA basin overlay, `leaflet.js`/`leaflet.css` (Leaflet 1.9.4). Charts were georeferenced (Lambert Conformal Conic) from FAA PDFs; see "Chart work" below.
+- `l/` full Los Angeles sectional tiles (file zooms 9-11), `s/` San Francisco sectional tiles, `d/` San Diego TAC tiles (`{z}/{x}/{y}.webp`, 512 px, Leaflet `zoomOffset:-1`), `leaflet.js`/`leaflet.css` (Leaflet 1.9.4). Layer order: `l/` under `s/` under `d/`. `l/` replaced the old hand-fitted `chart-basin.jpg` overlay on 2026-11-25. See "Chart work" below.
 - `docs/images/` README screenshots.
 
 ## Roadmap (do in this order, one at a time, preview after each)
@@ -63,6 +63,7 @@ Done when: a known active TFR (find one, or test with a mocked sample clearly la
 Done when: each station shows observed time and age, a stale test (mocked) turns amber, and the record lists source timestamps.
 
 ### 5. San Diego and NorCal data, and the central California chart gap
+Status 2026-11-25: the chart gap is closed (full LA sectional, `l/`). Airport data for San Diego and NorCal is still to do.
 - Airports: add San Diego area (SAN, MYF, NZY, SDM, CRQ, OKB, NRS, and others the chart shows) and Northern California (SFO, OAK, SJC, and others on the San Francisco chart) to `AIRPORTS` in `src/core.js`: class, ring size, tower/ATIS frequency, elevation. Take frequencies and airspace only from the FAA charts Ky supplied (San Francisco and San Diego TAC PDFs) or official FAA sources; ask Ky to re-upload the PDFs if needed. If a value can't be confirmed, leave it out and mark it unknown. Do not guess.
 - Make sure the nearest-airport list, weather station choice and rings use the new data and the Around-you view works near SAN and SFO.
 - Central California gap (about 34.5 to 36 N between the LA overlay and the San Francisco chart): street tiles only. Fix by cutting the full Los Angeles sectional (ask Ky to upload `Los_Angeles_1.pdf` again) into a tile pyramid `l/{z}/{x}/{y}.webp`, same method as `s/` and `d/` (Lambert Conformal Conic, standard parallels read from the chart note, least-squares fit on graticule crossings, validate with known airports, RMS under about 3 px at 100 dpi). The Vercel deployment has no 512 file limit (that limit applied only to the old preview).
@@ -76,7 +77,7 @@ Status 2026-11-25: the LAANC tab already has Aloft and AirHub request guides and
 Done when: buttons appear only when LAANC is needed, each link was checked, and entering an authorization number updates the status and record.
 
 ## Chart work (reference)
-Chart PDFs Ky has supplied: Los Angeles sectional (LA basin crop in `chart-basin.jpg`), San Francisco sectional, San Diego TAC. Tools used before: Python with numpy and OpenCV, `pdftoppm`, Playwright for screenshots. There is no pyproj; the Lambert math is hand-written. Tiles are webp quality about 68 with alpha edge tiles.
+Los Angeles sectional (`l/`, 2026-11-25): cut from the FAA digital VFR chart GeoTIFF (https://aeronav.faa.gov/visual/<edition date>/sectional-files/Los_Angeles.zip, edition 10-29-2026). The GeoTIFF carries its own georeferencing (LCC 2SP, standard parallels 33°20' and 38°40', origin 34°10' N 118°28' W, NAD83, 42.3 m pixels), so no control points are fitted. Mask (GeoTIFF pixels): map rows >= 1372, cols <= 16606, lat >= 32°N; legend col < 1590 above row 6252; left margin col < 605 for rows 6252-8090; Basin inset col < 4690 below row 8090. Checked: LAX, PSP, BLH and SBA land on their chart symbols; seams with `s/` at 36°N and `d/` line up. Each new chart edition: download the new zip, re-run `tools/la-sectional/make_tiles.py`, confirm the mask still fits. Other chart PDFs Ky has supplied: San Francisco sectional, San Diego TAC. Tools used before: Python with numpy and OpenCV, `pdftoppm`, Playwright for screenshots. There is no pyproj; the Lambert math is hand-written. Tiles are webp quality about 68 with alpha edge tiles.
 
 ## Known gaps (until the roadmap is done)
-Central California is street tiles only; airport, ring and tower data covers Southern California only; TFR/NOTAM not read; LAANC grid ceiling source not yet verified as official; the GPS rule blocks on desktop.
+Airport, ring and tower data covers Southern California only; TFR/NOTAM not read; LAANC grid ceiling source not yet verified as official; the GPS rule blocks on desktop.
