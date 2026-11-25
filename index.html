@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SkyClear Pre-Flight</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0e1822">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SkyClear">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="leaflet.css">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: instrument-panel checklist on the left, a light placard record card pinned on the right for observers. */
+:root{
+  --bg:#0e1822; --panel:#152433; --panel2:#1b2f42; --line:#27405a;
+  --ink:#e8f0f7; --muted:#8fa6ba; --accent:#4cc3ff;
+  --go:#3fcf8e; --warn:#f5b83d; --stop:#ff6161; --hold:#b79cff;
+  --paper:#f3f6f9; --paper-ink:#122030; --paper-line:#c9d4de; --paper-muted:#566a7d;
+  --display:'Barlow Condensed','Arial Narrow',sans-serif; --body:'IBM Plex Sans',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+body{padding:0 0 60px}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 18px}
+header{border-bottom:1px solid var(--line);background:#0b141c}
+.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 0 6px}
+.brand{font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:.04em;text-transform:uppercase}
+.brand span{color:var(--accent)}
+.badge{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--warn);color:var(--warn);padding:3px 8px;border-radius:3px}
+.badge.ok{border-color:var(--go);color:var(--go)}
+.locbar{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:8px 0 6px}
+.locbar label{display:block;font-size:11px;color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}
+.locbar input,.locbar select{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:8px 10px;font-family:var(--mono);font-size:14px}
+.locbar input{width:128px}
+.locbar button{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:9px 14px;cursor:pointer;font-weight:600}
+.locbar button.pri{background:var(--accent);border-color:var(--accent);color:#04202f}
+.locbar button:hover{filter:brightness(1.12)}
+#gpsmsg{font-size:13px;color:var(--muted);padding:0 0 12px;min-height:22px}
+main{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:22px;align-items:start;padding-top:20px}
+@media (max-width:960px){main{grid-template-columns:minmax(0,1fr)}}
+.banner{border-radius:8px;padding:16px 18px;display:flex;gap:16px;align-items:center;border:1px solid;margin-bottom:16px}
+.banner .big{font-family:var(--display);font-weight:700;font-size:38px;line-height:1;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap}
+.banner p{margin:0;opacity:.9}
+.b-go{background:#0f2b22;border-color:var(--go)}.b-go .big{color:var(--go)}
+.b-warn{background:#2c2410;border-color:var(--warn)}.b-warn .big{color:var(--warn)}
+.b-stop{background:#321616;border-color:var(--stop)}.b-stop .big{color:var(--stop)}
+.b-hold{background:#241d3a;border-color:var(--hold)}.b-hold .big{color:var(--hold)}
+.b-info{background:#102536;border-color:var(--accent)}.b-info .big{color:var(--accent)}
+@media (max-width:520px){.banner{flex-direction:column;align-items:flex-start;gap:8px}.banner .big{font-size:32px;white-space:normal}}
+section.grp{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:16px;overflow:hidden}
+.grp h2{margin:0;padding:12px 16px;font-family:var(--display);font-weight:600;font-size:20px;letter-spacing:.05em;text-transform:uppercase;display:flex;justify-content:space-between;gap:10px;background:var(--panel2);border-bottom:1px solid var(--line)}
+.grp h2 small{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:0;text-transform:none;align-self:center}
+.row{display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;padding:11px 16px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.chip{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:14px;margin-top:1px}
+.s-pass{background:var(--go);color:#062a1b}.s-caution{background:var(--warn);color:#2e2000}.s-fail{background:var(--stop);color:#340808}.s-hold{background:var(--hold);color:#1b1038}
+.row .l{font-weight:600}
+.row .v{font-family:var(--mono);font-size:13.5px;margin-top:1px;overflow-wrap:anywhere}
+.row .d{color:var(--muted);font-size:13px;margin-top:2px;max-width:72ch}
+.row .src{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:3px;opacity:.85}
+.viz{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:16px;padding:14px 16px;border-bottom:1px solid var(--line);align-items:center}
+@media (max-width:620px){.viz{grid-template-columns:minmax(0,1fr)}}
+.viz svg{width:100%;height:auto;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.d2{color:var(--muted);font-size:13px;margin:8px 0 0}
+.l{font-weight:600}
+.kvs{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;background:var(--line)}
+.kv{background:var(--panel);padding:10px 16px}
+.kv span{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.kv b{display:block;font-weight:500;font-family:var(--mono);font-size:13.5px;margin-top:2px;overflow-wrap:anywhere}
+.kv b small{display:block;color:var(--muted);font-family:var(--body);font-size:12px;font-weight:400}
+.seg{display:flex;gap:6px;flex-wrap:wrap;padding:12px 16px 4px}
+.seg button{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer;font-family:var(--mono);font-size:13px}
+.seg button small{display:block;font-size:10.5px;color:var(--muted)}
+.seg button[aria-pressed="true"]{border-color:var(--accent);background:var(--panel2)}
+.seg .rf{margin-left:auto}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;padding:6px 16px 14px}
+.tile{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:var(--bg)}
+.tl{font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--accent)}
+.tn{font-size:13px;margin-top:3px}
+.tv{font-family:var(--display);font-weight:700;font-size:28px;line-height:1.1;margin-top:2px}
+.tv small{font-family:var(--mono);font-size:11.5px;font-weight:400;color:var(--muted)}
+.td{font-size:12px;color:var(--muted);margin-top:3px}
+.scroll{overflow-x:auto}
+table.tb{width:100%;border-collapse:collapse;font-size:13.5px}
+.tb th{text-align:left;font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:6px 16px;border-top:1px solid var(--line)}
+.tb td{padding:7px 16px;border-top:1px solid var(--line);vertical-align:top}
+.tb td.n{font-family:var(--mono);white-space:nowrap}
+.tb td small{display:block;color:var(--muted);font-size:11px}
+.muted{color:var(--muted)}.pad{padding:10px 16px;margin:0}
+.cls,.cat{display:inline-block;font-family:var(--mono);font-size:11px;padding:1px 7px;border-radius:3px;border:1px solid;margin-left:4px;white-space:nowrap}
+.cls-B{color:#b79cff;border-color:#b79cff}.cls-C{color:#e0a3ff;border-color:#e0a3ff}.cls-D{color:#4cc3ff;border-color:#4cc3ff}.cls-0{color:var(--muted);border-color:var(--line)}
+.cat-VFR{color:#3fcf8e;border-color:#3fcf8e}.cat-MVFR{color:#5ba8ff;border-color:#5ba8ff}.cat-IFR{color:#ff6161;border-color:#ff6161}.cat-LIFR{color:#ff7ad9;border-color:#ff7ad9}
+.facs{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1px;background:var(--line)}
+.fac{background:var(--panel);padding:12px 16px}
+.fh{font-size:14px;margin-bottom:6px}.fd{float:right;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.fac dl{margin:0;display:grid;grid-template-columns:86px minmax(0,1fr);gap:4px 10px;font-size:13px}
+.fac dt{color:var(--muted)}.fac dd{margin:0;font-family:var(--mono);font-size:12.5px;overflow-wrap:anywhere}
+.foot2{margin:0;padding:10px 16px;font-size:12.5px;color:var(--muted);border-top:1px solid var(--line)}
+.srcbar{font-family:var(--mono);font-size:12px;padding:8px 16px;color:var(--muted);border-bottom:1px solid var(--line)}
+.srcbar.live{color:var(--go)}.srcbar.sample{color:var(--warn);background:#2c2410}
+.wxh{padding:12px 16px 4px;font-size:15px}
+.lbl{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);padding:10px 16px 4px}
+pre.raw{margin:0 16px;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:10px 12px;font-family:var(--mono);font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+table.bd{width:calc(100% - 32px);margin:2px 16px 4px;border-collapse:collapse;font-size:13px}
+.bd td{padding:5px 8px 5px 0;border-top:1px solid var(--line);vertical-align:top}
+.bd td.tk{font-family:var(--mono);color:var(--accent);white-space:nowrap;padding-right:12px}
+.bd td.lb{color:var(--muted);white-space:nowrap;padding-right:12px}
+.gh{font-family:var(--display);font-weight:600;font-size:17px;letter-spacing:.04em;padding:10px 16px 2px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.fields label{display:block;font-size:12px;color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.04em}
+.fields input{width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:8px 10px;font-family:var(--mono);font-size:14px}
+.fields input:disabled{opacity:.45}
+.sub{padding:9px 16px 4px;font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+.todo{display:flex;gap:12px;align-items:flex-start;padding:9px 16px;cursor:pointer;border-bottom:1px solid var(--line)}
+.todo:last-child{border-bottom:0}
+.todo input{margin-top:3px;width:18px;height:18px;accent-color:var(--go);flex:none}
+.todo span b{font-weight:600}.todo span small{display:block;color:var(--muted);font-size:13px}
+.bar{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;margin:12px 16px 0}
+.bar i{display:block;height:100%;background:var(--go);transition:width .25s}
+.card{position:sticky;top:14px;background:var(--paper);color:var(--paper-ink);border-radius:8px;overflow:hidden;border:1px solid var(--paper-line)}
+@media (max-width:960px){.card{position:static}}
+.card .sample{background:#ffd9a0;color:#4a2b00;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;text-align:center;padding:5px 8px;font-weight:500}
+.card .sample.liveb{background:#cdf3df;color:#0b4a2d}
+.card .head{padding:14px 16px 10px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.card h3{margin:0;font-family:var(--display);font-size:22px;letter-spacing:.05em;text-transform:uppercase;line-height:1.1}
+.card .id{font-family:var(--mono);font-size:12px;color:var(--paper-muted);text-align:right}
+.card .st{margin:0 16px;border-radius:6px;padding:10px 12px;font-family:var(--display);font-weight:700;font-size:30px;letter-spacing:.04em;text-transform:uppercase;line-height:1.05}
+.st.c-go{background:#cdf3df;color:#0b4a2d}.st.c-warn{background:#fde6b3;color:#5a3d00}.st.c-stop{background:#ffd0d0;color:#6d0f0f}.st.c-hold{background:#e2d9ff;color:#2f1a6b}.st.c-info{background:#cfeaff;color:#08405f}
+.card .meta{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 12px;padding:12px 16px;font-size:13px}
+.card .meta dt{color:var(--paper-muted)}.card .meta dd{margin:0;font-family:var(--mono);font-size:12.5px;overflow-wrap:anywhere}
+.card table{width:calc(100% - 32px);margin:0 16px;border-collapse:collapse;font-size:12.5px}
+.card td{border-top:1px solid var(--paper-line);padding:4px;vertical-align:top}
+.card td:first-child{width:22px;font-weight:700;text-align:center}
+.card td.v{font-family:var(--mono);text-align:right;color:var(--paper-muted);max-width:150px;overflow-wrap:anywhere}
+.m-pass{color:#117a49}.m-caution{color:#a56a00}.m-fail{color:#c02525}.m-hold{color:#5b3fc2}
+.card .foot{padding:12px 16px;border-top:1px solid var(--paper-line);margin-top:10px;display:grid;grid-template-columns:84px minmax(0,1fr);gap:12px;align-items:center}
+.qr{width:84px;height:84px;border:2px dashed var(--paper-line);display:grid;place-items:center;text-align:center;font-size:10px;color:var(--paper-muted);font-family:var(--mono);padding:4px}
+.hash{font-family:var(--mono);font-size:11.5px;overflow-wrap:anywhere}
+.hash small{display:block;color:var(--paper-muted);font-family:var(--body);font-size:11.5px}
+.legal{padding:10px 16px 12px;font-size:11.5px;color:var(--paper-muted);border-top:1px solid var(--paper-line)}
+.actions{display:flex;gap:8px;padding:0 16px 14px}
+.actions button{flex:1;background:var(--paper-ink);color:#fff;border:0;border-radius:5px;padding:9px 10px;cursor:pointer;font-weight:600}
+.actions button:hover{filter:brightness(1.25)}
+.copybox{margin:0 16px 14px;background:#fff;border:1px solid var(--paper-line);border-radius:5px;padding:8px;font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;max-height:160px;overflow:auto;display:none}
+
+.tabs{display:flex;gap:4px;margin-left:auto}
+.tabs button{background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);padding:8px 14px;cursor:pointer;font-family:var(--display);font-weight:600;font-size:18px;letter-spacing:.05em;text-transform:uppercase}
+.tabs button[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent)}
+.mapbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:16px;overflow:hidden}
+.maptools{display:flex;gap:10px 16px;flex-wrap:wrap;align-items:center;padding:8px 12px;background:var(--panel2);border-bottom:1px solid var(--line);font-size:13px}
+.maptools label{display:flex;gap:6px;align-items:center;color:var(--muted)}
+.maptools button{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:5px 10px;cursor:pointer;font-size:13px}
+.maptools button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+.maptools input[type=range]{width:110px;accent-color:var(--accent)}
+#map{height:min(62vh,520px);min-height:340px;background:#0b141c;z-index:0}
+#map.pinning{cursor:crosshair}
+.maplegend{display:flex;flex-wrap:wrap;gap:4px 14px;padding:8px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
+.maplegend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.leaflet-container{font-family:var(--body)}
+.apt{position:relative}
+.apd{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50%;background:#111;border:2px solid #fff}
+.apl{position:absolute;left:7px;top:-9px;font:600 11px var(--mono);color:#111;background:rgba(255,255,255,.85);padding:0 3px;border-radius:2px;white-space:nowrap}
+.fields select{width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:8px 10px;font-family:var(--mono);font-size:14px}
+.fields small{display:block;font-size:12px;margin-top:3px;font-family:var(--body);text-transform:none;letter-spacing:0}
+.fields small.ok{color:var(--go)}.fields small.bad{color:var(--stop)}
+.reqhead{padding:22px 0 8px}.reqhead h1{margin:0;font-family:var(--display);font-size:34px;letter-spacing:.04em;text-transform:uppercase}.reqhead p{margin:4px 0 0;color:var(--muted);max-width:70ch}
+#view-req,#view-laanc{max-width:860px;padding-top:6px}
+.req h3{margin:14px 0 6px;font-family:var(--display);font-size:17px;letter-spacing:.05em;text-transform:uppercase}
+.steps{margin:0;padding-left:22px}.steps li{margin:0 0 6px}
+.tb.kv th{width:130px;border-top:1px solid var(--line);padding:7px 10px 7px 0;vertical-align:top}.tb.kv td{padding:7px 0}
+.req a{color:var(--accent)}
+.lnow{display:grid;gap:4px;border-left:4px solid;padding:6px 12px;border-radius:4px}
+.lnow.need{border-color:var(--warn);background:rgba(245,184,61,.08)}.lnow.need>b{color:var(--warn)}
+.lnow.ok{border-color:var(--go);background:rgba(63,207,142,.08)}.lnow.ok>b{color:var(--go)}
+.lnow span{color:var(--muted);font-size:14px}.lnow span b{color:var(--ink)}
+.lsmall{font-size:13px;padding:0 16px 12px}
+.saved{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 16px 0;font-size:13px;color:var(--muted)}
+.saved button{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:5px 10px;cursor:pointer;font-size:13px;color:var(--ink)}
+.req{padding:12px 16px}.req p{margin:0 0 8px}.req p.note{color:var(--muted);font-size:13px;margin:0}.req ul{margin:0;padding-left:18px}.req li{margin:0 0 6px}
+.altline{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:-6px 0 16px}
+.altline>div{background:var(--panel);padding:9px 14px}
+.altline span{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.altline b{display:block;font-family:var(--display);font-weight:700;font-size:26px;line-height:1.15}
+.authl.need b{color:var(--warn)}.authl.none b{color:var(--go)}
+.altwarn{margin:-8px 0 16px;padding:8px 14px;background:#2c2410;border:1px solid var(--warn);border-radius:6px;color:var(--warn);font-size:13px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="top"><div class="brand">Sky<span>Clear</span> <span style="color:var(--muted);font-weight:600;font-size:18px">Pre-Flight · SoCal</span></div><span class="badge" id="badge">Loading</span><nav class="tabs" aria-label="Sections"><button data-tab="pre" aria-current="page">Pre-flight</button><button data-tab="laanc" aria-current="false">LAANC</button><button data-tab="req" aria-current="false">Requirements</button></nav></div>
+    <div class="locbar">
+      <button class="pri" id="gps">Use my GPS</button>
+      <div><label for="preset">Preset</label><select id="preset"></select></div>
+      <div><label for="lat">Latitude</label><input id="lat" inputmode="decimal"></div>
+      <div><label for="lon">Longitude</label><input id="lon" inputmode="decimal"></div>
+      <button id="go">Go</button>
+    </div>
+    <div id="gpsmsg" role="status"></div>
+  </div>
+</header>
+<div class="wrap">
+<main id="view-pre">
+  <div><div id="banner"></div>
+   <div class="mapbox"><div class="maptools"><button id="pinbtn" aria-pressed="false">Drop pin</button><button id="recenter">Recenter</button>
+    <label>Chart <input type="checkbox" id="chartvis" checked></label><label>Opacity <input type="range" id="chartop" min="0" max="100" value="85" aria-label="Chart opacity"><span id="chartopv">85%</span></label></div>
+    <div id="map" role="application" aria-label="Map of your position on the sectional chart"></div>
+    <div class="maplegend"><span><i style="background:#12b76a"></i>You</span><span><i style="background:#1a9bff"></i>Class D, about 4 NM</span><span><i style="background:#c04bff"></i>Class C, about 5 NM</span><span><i style="background:#7b5cff"></i>Class B, near LAX, about 6 NM</span><span>Dotted ring = search radius. Pinch, scroll or use + / − to zoom.</span></div></div>
+   <div id="groups"></div></div>
+  <aside class="card" id="card" aria-label="Pre-flight record"></aside>
+</main>
+<div id="view-req" hidden></div>
+<div id="view-laanc" hidden></div>
+</div>
+<script src="leaflet.js"></script>
+<script>
+/* ===== SkyClear core: data, geometry, sun, METAR/TAF decoders (pure functions, no DOM) ===== */
+const CHART={name:"Los Angeles VFR Sectional",from:"2026-10-29",to:"2026-12-24"};
+const NM=1.15078; // statute miles per nautical mile
+
+/* Airports, classes and frequencies read from the Los Angeles Sectional margin tables.
+   Positions are airport reference points, approximate to about 0.01 degree. */
+const AIRPORTS=[
+ {id:"LAX",icao:"KLAX",name:"Los Angeles Intl",lat:33.9425,lon:-118.4081,cls:"B",hrs:"Continuous",
+  twr:"133.9 239.3 (N complex) · 120.95 379.1 (S complex) · 119.8 239.3 (heli)",gnd:"121.4 (W) · 121.65 (N complex) · 121.75 (S complex) · 327.0",atis:"133.8 (arrivals) · 135.65 (departures)",
+  app:"LA Class B: 124.3 124.5 124.9 125.2 127.4 · 128.75 134.9 235.975 263.025 · 269.0 323.275 346.25 363.2"},
+ {id:"HHR",icao:"KHHR",name:"Hawthorne Municipal (Jack Northrop Fld)",lat:33.9228,lon:-118.3352,cls:"D",hrs:"0600-2200",twr:"121.1 257.8",gnd:"125.1",atis:"118.4",app:"SoCal Approach, see LA Class B sectors"},
+ {id:"SMO",icao:"KSMO",name:"Santa Monica Municipal",lat:34.0158,lon:-118.4513,cls:"D",hrs:"0700-2100",twr:"120.1 257.8",gnd:"121.9",atis:"119.15",app:"SoCal Approach, see LA Class B sectors"},
+ {id:"TOA",icao:"KTOA",name:"Zamperini Field (Torrance)",lat:33.8034,lon:-118.3396,cls:"D",hrs:"0700-2000",twr:"124.0 (S) · 133.075 (N) · 257.8",gnd:"120.9",atis:"125.6",app:"SoCal Approach, see LA Class B sectors"},
+ {id:"VNY",icao:"KVNY",name:"Van Nuys",lat:34.2098,lon:-118.4899,cls:"D",hrs:"0600-2245",twr:"119.3 (162°-345° and RWY 16R/34L dep) · 120.2 (346°-161° and RWY 16L/34R dep) · 239.0",gnd:"121.7",atis:"127.55",app:"Burbank Class C sectors cover Van Nuys: 120.4 360.6 · 134.2 338.2"},
+ {id:"BUR",icao:"KBUR",name:"Hollywood Burbank",lat:34.2007,lon:-118.3587,cls:"C",hrs:"Continuous",twr:"118.7 254.3",gnd:"123.9 348.6 (heli 132.325)",atis:"135.125",
+  app:"Burbank Class C: 120.4 360.6 (VNY 280°-BUR 050°) · 134.2 338.2 (VNY 160°-280°) · 135.05 317.5 (BUR 050°-150°) · 124.6 298.85 (BUR 150°-VNY 160°)"},
+ {id:"LGB",icao:"KLGB",name:"Long Beach (Daugherty Fld)",lat:33.8180,lon:-118.1518,cls:"D",hrs:"0615-2345",twr:"119.4 (RWY 08R/26L; 30 arr, 12 dep) · 120.5 (RWY 08L/26R; 12 arr, 30 dep) · 257.6",gnd:"133.0 257.6",atis:"127.75",app:"SoCal Approach 125.35 316.125 (Chart Supplement)"},
+ {id:"SLI",icao:"KSLI",name:"Los Alamitos AAF",lat:33.7900,lon:-118.0519,cls:"D",hrs:"0700-2200 Mon-Thu, 0700-1600 Fri-Sun, closed federal holidays",twr:"123.85 251.15",gnd:"126.95 257.95",atis:"118.875 379.975",app:"SoCal Approach"},
+ {id:"FUL",icao:"KFUL",name:"Fullerton Municipal",lat:33.8720,lon:-117.9801,cls:"D",hrs:"0700-2100",twr:"119.1",gnd:"121.8",atis:"125.05",app:"SoCal Approach"},
+ {id:"SNA",icao:"KSNA",name:"John Wayne / Orange County",lat:33.6757,lon:-117.8682,cls:"C",hrs:"0615-2300",twr:"119.9 (RWY 02R/20L) · 126.8 (RWY 02L/20R) · 343.625",gnd:"120.8 (E) · 125.25 (W)",atis:"126.0",
+  app:"Santa Ana Class C: 121.3 263.1 (315°-045°) · 121.1 132.7 279.575 350.325 (045°-130°) · 128.1 281.4 (130°-190°) · 125.35 316.125 (190°-315° above 3000) · 127.2 269.6 (190°-315°). Service 0615-2300, other times Class G"},
+ {id:"ONT",icao:"KONT",name:"Ontario Intl",lat:34.0560,lon:-117.6012,cls:"C",hrs:"0600-2300",twr:"120.6 360.775",gnd:"121.9 257.8",atis:"124.25",
+  app:"Ontario Class C: 127.0 318.2 (N-NE) · 379.25 (NE-E) · 134.0 278.3 (NE-S) · 278.3 (E-S) · 135.4 377.125 (S-SW) · 125.5 349.0 (SW-N)"},
+ {id:"CNO",icao:"KCNO",name:"Chino",lat:33.9747,lon:-117.6366,cls:"D",hrs:"0700-2100",twr:"118.5",gnd:"121.6",atis:"125.8",app:"SoCal Approach"},
+ {id:"POC",icao:"KPOC",name:"Brackett Field (La Verne)",lat:34.0916,lon:-117.7818,cls:"D",hrs:"0700-2100",twr:"118.2 (RWY 08R/26L) · 133.3 (RWY 08L/26R)",gnd:"125.0",atis:"126.4",app:"SoCal Approach"},
+ {id:"RAL",icao:"KRAL",name:"Riverside Municipal",lat:33.9519,lon:-117.4451,cls:"D",hrs:"0700-2000",twr:"121.0 257.8",gnd:"121.7",atis:"128.8",app:"SoCal Approach"},
+ {id:"RIV",icao:"KRIV",name:"March ARB / Riverside",lat:33.8807,lon:-117.2595,cls:"C",hrs:"Continuous",twr:"127.65 253.5",gnd:"121.75 335.8",atis:"134.75 239.05",app:"March Class C: 119.25 133.5 270.275 306.975 (0700-2300 Mon-Fri, 0700-1800 Sat-Sun; other times SoCal 134.0 278.3)"},
+ {id:"SBD",icao:"KSBD",name:"San Bernardino Intl",lat:34.0954,lon:-117.2349,cls:"D",hrs:"0700-2100",twr:"119.45",gnd:"121.8",atis:"124.175",app:"SoCal Approach"},
+ {id:"OXR",icao:"KOXR",name:"Oxnard",lat:34.2008,lon:-119.2072,cls:"D",hrs:"0700-2100",twr:"134.95 257.8",gnd:"121.9",atis:"118.05",app:"SoCal Approach"},
+ {id:"CMA",icao:"KCMA",name:"Camarillo",lat:34.2138,lon:-119.0943,cls:"D",hrs:"0700-2100",twr:"128.2 269.4",gnd:"121.8",atis:"126.025",app:"SoCal Approach"},
+ {id:"SBA",icao:"KSBA",name:"Santa Barbara Municipal",lat:34.4262,lon:-119.8404,cls:"C",hrs:"0600-2300",twr:"119.7 254.35",gnd:"121.7",atis:"132.65",app:"Santa Barbara Class C: 120.55 319.15 (151°-329°) · 125.4 291.1 (330°-150°)"},
+ {id:"SAN",icao:"KSAN",name:"San Diego Intl",lat:32.7336,lon:-117.1897,cls:"B",hrs:"Continuous",twr:"118.3 338.225",gnd:"123.9",atis:"134.8",app:"San Diego Class B: 132.2 269.1 (029°-061°) · 124.35 279.625 (062°-109°) · 125.15 317.55 (110°-224°) · 119.6 363.1 (225°-293°) · 127.3 323.0 (294°-028°)"},
+ {id:"MYF",icao:"KMYF",name:"Montgomery-Gibbs Exec",lat:32.8157,lon:-117.1396,cls:"D",hrs:"0600-2100",twr:"119.2 (RWY 10R/28L) · 125.7 (RWY 10L/28R) · 269.4",gnd:"118.225",atis:"126.9",app:"SoCal Approach"},
+ {id:"CRQ",icao:"KCRQ",name:"McClellan-Palomar (Carlsbad)",lat:33.1283,lon:-117.2803,cls:"D",hrs:"0700-2200",twr:"118.6 276.4",gnd:"121.8",atis:"120.15",app:"SoCal Approach"},
+ {id:"SEE",icao:"KSEE",name:"Gillespie Field",lat:32.8262,lon:-116.9724,cls:"D",hrs:"0700-2100",twr:"120.7 257.8",gnd:"121.7",atis:"125.45",app:"SoCal Approach"},
+ /* no tower: shown on the radar, class and frequencies must be confirmed on the chart */
+ {id:"CPM",icao:null,name:"Compton/Woodley",lat:33.8900,lon:-118.2437,cls:null},
+ {id:"EMT",icao:null,name:"San Gabriel Valley (El Monte)",lat:34.0861,lon:-118.0347,cls:null},
+ {id:"WHP",icao:null,name:"Whiteman (Pacoima)",lat:34.2593,lon:-118.4134,cls:null},
+ {id:"CCB",icao:null,name:"Cable (Upland)",lat:34.1116,lon:-117.6883,cls:null},
+ {id:"AJO",icao:null,name:"Corona Municipal",lat:33.8978,lon:-117.6026,cls:null}
+];
+const PRESETS=[
+ {k:"lax",name:"LAX (Los Angeles)",lat:33.9425,lon:-118.4081,elev:128},
+ {k:"smo",name:"Santa Monica",lat:34.0100,lon:-118.4960,elev:90},
+ {k:"vny",name:"Van Nuys",lat:34.1900,lon:-118.4500,elev:720},
+ {k:"lgb",name:"Long Beach",lat:33.7700,lon:-118.1900,elev:25},
+ {k:"sna",name:"Santa Ana",lat:33.7460,lon:-117.8670,elev:135},
+ {k:"ont",name:"Ontario",lat:34.0640,lon:-117.6500,elev:960},
+ {k:"hhr",name:"Hawthorne",lat:33.9164,lon:-118.3526,elev:70}
+];
+
+/* ---- geometry ---- */
+const toRad=d=>d*Math.PI/180, toDeg=r=>r*180/Math.PI;
+function distMi(lat1,lon1,lat2,lon2){const R=3958.8;const dLat=toRad(lat2-lat1),dLon=toRad(lon2-lon1);const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(a))}
+function bearing(lat1,lon1,lat2,lon2){const y=Math.sin(toRad(lon2-lon1))*Math.cos(toRad(lat2));const x=Math.cos(toRad(lat1))*Math.sin(toRad(lat2))-Math.sin(toRad(lat1))*Math.cos(toRad(lat2))*Math.cos(toRad(lon2-lon1));return (toDeg(Math.atan2(y,x))+360)%360}
+const COMP=["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+const compass=b=>COMP[Math.round(b/22.5)%16];
+function dms(v,pos,neg){const h=v>=0?pos:neg;v=Math.abs(v);const d=Math.floor(v);const m=Math.floor((v-d)*60);const s=((v-d)*60-m)*60;return d+"°"+String(m).padStart(2,"0")+"'"+s.toFixed(1).padStart(4,"0")+'" '+h}
+function around(lat,lon){return AIRPORTS.map(a=>{const d=distMi(lat,lon,a.lat,a.lon);return Object.assign({},a,{dist:d,nm:d/NM,brg:bearing(lat,lon,a.lat,a.lon)})}).sort((a,b)=>a.dist-b.dist)}
+/* Approximate controlled-surface rings. Real boundaries are irregular: the FAA layer or the chart decides. */
+const RING={D:4,C:5}; // NM, surface area radius
+function ringInfo(a){ if(a.cls==="D")return {r:RING.D,label:"Class D surface area, about 4 NM"}; if(a.cls==="C")return {r:RING.C,label:"Class C surface area, about 5 NM (shelf to about 10 NM)"}; return null }
+function approxAir(list){
+  const hits=[];
+  list.forEach(a=>{
+    if(a.cls==="D"&&a.nm<=RING.D)hits.push({cls:"D",a,why:"inside the approximate 4 NM Class D surface area of "+a.id});
+    if(a.cls==="C"&&a.nm<=RING.C)hits.push({cls:"C",a,why:"inside the approximate 5 NM Class C surface area of "+a.id});
+    if(a.cls==="B"&&a.nm<=6)hits.push({cls:"B",a,why:"within about 6 NM of "+a.id+", where Class B starts at or near the surface"});
+  });
+  return hits;
+}
+
+/* ---- sun (NOAA sunrise equation) ---- */
+function sunTimes(lat,lon,date){
+  const jd=date.getTime()/86400000+2440587.5;
+  const n=Math.ceil(jd-2451545.0+0.0008);
+  const Js=n-lon/360, M=(357.5291+0.98560028*Js)%360, Mr=toRad(M);
+  const C=1.9148*Math.sin(Mr)+0.02*Math.sin(2*Mr)+0.0003*Math.sin(3*Mr);
+  const lam=(M+C+180+102.9372)%360, lr=toRad(lam);
+  const Jt=2451545.0+Js+0.0053*Math.sin(Mr)-0.0069*Math.sin(2*lr);
+  const sd=Math.sin(lr)*Math.sin(toRad(23.4397)), cd=Math.cos(Math.asin(sd));
+  const f=a=>{const c=(Math.sin(toRad(a))-Math.sin(toRad(lat))*sd)/(Math.cos(toRad(lat))*cd);if(c>1||c<-1)return null;return toDeg(Math.acos(c))};
+  const toDate=j=>new Date((j-2440587.5)*86400000);
+  const w=f(-0.833), c=f(-6);
+  return {sunrise:w==null?null:toDate(Jt-w/360),sunset:w==null?null:toDate(Jt+w/360),civilBegin:c==null?null:toDate(Jt-c/360),civilEnd:c==null?null:toDate(Jt+c/360)};
+}
+
+/* ---- METAR / TAF decoding ---- */
+const WXD={MI:"shallow",PR:"partial",BC:"patches of",DR:"low drifting",BL:"blowing",SH:"showers of",TS:"thunderstorm with",FZ:"freezing"};
+const WXP={DZ:"drizzle",RA:"rain",SN:"snow",SG:"snow grains",IC:"ice crystals",PL:"ice pellets",GR:"hail",GS:"small hail",UP:"unknown precipitation",BR:"mist",FG:"fog",FU:"smoke",VA:"volcanic ash",DU:"dust",SA:"sand",HZ:"haze",PY:"spray",PO:"dust whirls",SQ:"squalls",FC:"funnel cloud",SS:"sandstorm",DS:"duststorm"};
+const COVER={FEW:"Few clouds",SCT:"Scattered clouds",BKN:"Broken clouds",OVC:"Overcast"};
+const WXRE=/^(\+|-|VC)?((?:MI|PR|BC|DR|BL|SH|TS|FZ)?(?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS)+|TS|SH|FZ)$/;
+function decWx(t){const m=t.match(WXRE);if(!m)return null;let s="";const pre=m[1]||"";let body=m[2];if(pre==="+")s="Heavy ";else if(pre==="-")s="Light ";else if(pre==="VC")s="In the vicinity: ";const parts=[];while(body.length){const d=body.slice(0,2);if(WXD[d]){parts.push(WXD[d]);body=body.slice(2)}else if(WXP[d]){parts.push(WXP[d]);body=body.slice(2)}else break}return s+parts.join(" ")}
+const cToF=c=>Math.round(c*9/5+32);
+const tnum=s=>s[0]==="M"?-parseInt(s.slice(1),10):parseInt(s,10);
+function hhmmLocal(day,hh,mm,now){const d=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),day,hh,mm));if(d.getTime()-now.getTime()>2*86400000)d.setUTCMonth(d.getUTCMonth()-1);return d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})+" local"}
+/* decode one weather token shared by METAR and TAF; returns {label,text,data} or null */
+function decCommon(t,ctx){
+  let m;
+  if((m=t.match(/^(VRB|\d{3})(\d{2,3})(?:G(\d{2,3}))?KT$/))){const calm=+m[2]===0;return {label:"Wind",text:calm?"Calm":(m[1]==="VRB"?"Variable":"From "+m[1]+"°")+" at "+(+m[2])+" kt"+(m[3]?", gusting "+(+m[3])+" kt":""),data:{wind:{dir:m[1],spd:+m[2],gust:m[3]?+m[3]:null}}}}
+  if((m=t.match(/^(\d{3})V(\d{3})$/)))return {label:"Variable wind",text:"Direction varying between "+m[1]+"° and "+m[2]+"°"};
+  if(/^(P|M)?\d+(\/\d+)?SM$/.test(t)){const x=t.replace("SM","");const p=x[0]==="P"?"more than ":x[0]==="M"?"less than ":"";const v=x.replace(/^[PM]/,"");let n=v.includes("/")?(+v.split("/")[0])/(+v.split("/")[1]):+v;return {label:"Visibility",text:p+v+" statute mile"+(n===1?"":"s"),data:{vis:p==="more than "?Math.max(n,6.1):n}}}
+  if(/^\d{4}$/.test(t)&&ctx&&ctx.allowMeters){const n=+t;const sm=n>=9999?10:n/1609.34;return {label:"Visibility",text:(n>=9999?"10 km or more":n+" m")+" (about "+sm.toFixed(1)+" SM)",data:{vis:sm}}}
+  if(t==="CAVOK")return {label:"CAVOK",text:"Visibility 10 km or more, no significant cloud",data:{vis:10,sky:[]}};
+  if((m=t.match(/^R(\d{2}[LCR]?)\/([PM])?(\d{4})(?:V([PM])?(\d{4}))?FT$/)))return {label:"Runway visual range",text:"Runway "+m[1]+": "+(m[2]==="P"?"more than ":m[2]==="M"?"less than ":"")+m[3]+" ft"+(m[5]?" varying to "+m[5]+" ft":"")};
+  if(t==="NSW")return {label:"Weather",text:"No significant weather"};
+  const wx=decWx(t);if(wx&&!/^(TS|SH|FZ)$/.test(t)||(wx&&t.length>2))return {label:"Weather",text:wx,data:{wx:t}};
+  if((m=t.match(/^(FEW|SCT|BKN|OVC)(\d{3})(CB|TCU)?$/)))return {label:"Sky",text:COVER[m[1]]+" at "+(+m[2]*100).toLocaleString()+" ft above ground"+(m[3]?" ("+(m[3]==="CB"?"cumulonimbus":"towering cumulus")+")":""),data:{sky:[{c:m[1],h:+m[2]*100}]}};
+  if((m=t.match(/^VV(\d{3})$/)))return {label:"Sky",text:"Vertical visibility "+(+m[1]*100).toLocaleString()+" ft (sky obscured)",data:{sky:[{c:"OVC",h:+m[1]*100}]}};
+  if(["SKC","CLR","NSC"].includes(t))return {label:"Sky",text:t==="NSC"?"No significant cloud":"Clear skies",data:{sky:[]}};
+  if((m=t.match(/^WS(\d{3})\/(\d{3})(\d{2,3})KT$/)))return {label:"Wind shear",text:"At "+(+m[1]*100)+" ft: wind from "+m[2]+"° at "+(+m[3])+" kt"};
+  return null;
+}
+function flightCat(vis,sky){
+  const ceil=(sky||[]).filter(s=>s.c==="BKN"||s.c==="OVC").reduce((a,s)=>Math.min(a,s.h),Infinity);
+  const v=vis==null?10:vis;
+  if(ceil<500||v<1)return "LIFR"; if(ceil<1000||v<3)return "IFR"; if(ceil<=3000||v<=5)return "MVFR"; return "VFR";
+}
+function decodeMetar(raw,now){
+  now=now||new Date();
+  const toks=raw.trim().replace(/\s+/g," ").split(" ");const items=[];const out={raw:raw.trim(),sky:[],wx:[],vis:null,wind:null,temp:null,dew:null,alt:null,station:null};
+  let i=0,inRmk=false,m;
+  while(i<toks.length){
+    let t=toks[i];
+    if(inRmk){
+      let d=t;
+      if(t==="AO2")d="Automated station with precipitation sensor";
+      else if(t==="AO1")d="Automated station without precipitation sensor";
+      else if((m=t.match(/^SLP(\d{3})$/))){const p=+m[1]/10;d="Sea-level pressure "+((p<50?1000+p:900+p)).toFixed(1)+" hPa"}
+      else if((m=t.match(/^T([01])(\d{3})([01])(\d{3})$/))){const a=(m[1]==="1"?-1:1)*(+m[2])/10,b=(m[3]==="1"?-1:1)*(+m[4])/10;d="Precise temperature "+a.toFixed(1)+" °C, dew point "+b.toFixed(1)+" °C"}
+      else if(t==="$")d="Station needs maintenance";
+      else if(/^P\d{4}$/.test(t))d="Precipitation last hour "+(+t.slice(1)/100).toFixed(2)+" in";
+      else d="";
+      items.push({tok:t,label:"Remark",text:d||"Additional remark (see raw text)"});i++;continue;
+    }
+    if(t==="METAR"||t==="SPECI"){items.push({tok:t,label:"Report type",text:t==="METAR"?"Routine observation":"Special observation (conditions changed)"});i++;continue}
+    if(!out.station&&/^[A-Z][A-Z0-9]{3}$/.test(t)){out.station=t;const ap=AIRPORTS.find(a=>a.icao===t);items.push({tok:t,label:"Station",text:t+(ap?" · "+ap.name:"")});i++;continue}
+    if((m=t.match(/^(\d{2})(\d{2})(\d{2})Z$/))){out.time={day:+m[1],hh:+m[2],mm:+m[3]};items.push({tok:t,label:"Observed",text:"Day "+m[1]+" at "+m[2]+":"+m[3]+" UTC ("+hhmmLocal(+m[1],+m[2],+m[3],now)+")"});i++;continue}
+    if(t==="AUTO"||t==="COR"){items.push({tok:t,label:t==="AUTO"?"Automated":"Correction",text:t==="AUTO"?"Fully automated report, no human observer":"Corrected report"});i++;continue}
+    if(t==="RMK"){inRmk=true;items.push({tok:t,label:"Remarks",text:"Remarks section follows"});i++;continue}
+    if(/^\d$/.test(t)&&/^\d\/\dSM$/.test(toks[i+1]||"")){const f=toks[i+1].replace("SM","").split("/");const n=+t+(+f[0])/(+f[1]);out.vis=n;items.push({tok:t+" "+toks[i+1],label:"Visibility",text:t+" "+f[0]+"/"+f[1]+" statute miles"});i+=2;continue}
+    if((m=t.match(/^(M?\d{2})\/(M?\d{2})?$/))){out.temp=tnum(m[1]);out.dew=m[2]?tnum(m[2]):null;items.push({tok:t,label:"Temperature / dew point",text:out.temp+" °C ("+cToF(out.temp)+" °F)"+(out.dew!=null?", dew point "+out.dew+" °C ("+cToF(out.dew)+" °F)":"")});i++;continue}
+    if((m=t.match(/^A(\d{4})$/))){out.alt=+m[1]/100;items.push({tok:t,label:"Altimeter",text:(+m[1]/100).toFixed(2)+" inHg"});i++;continue}
+    if((m=t.match(/^Q(\d{4})$/))){out.alt=+m[1]*0.02953;items.push({tok:t,label:"Altimeter",text:m[1]+" hPa"});i++;continue}
+    const d=decCommon(t,{allowMeters:true});
+    if(d){if(d.data){const x=d.data;if(x.wind)out.wind=x.wind;if(x.vis!=null)out.vis=x.vis;if(x.sky)out.sky=out.sky.concat(x.sky);if(x.wx)out.wx.push(x.wx)}items.push({tok:t,label:d.label,text:d.text});i++;continue}
+    items.push({tok:t,label:"Other",text:"Not decoded"});i++;
+  }
+  out.items=items;out.cat=flightCat(out.vis,out.sky);
+  out.ceiling=out.sky.filter(s=>s.c==="BKN"||s.c==="OVC").reduce((a,s)=>Math.min(a,s.h),Infinity);if(out.ceiling===Infinity)out.ceiling=null;
+  return out;
+}
+function decodeTaf(raw,now){
+  now=now||new Date();
+  const lines=raw.trim().split(/\n+/).map(s=>s.trim()).filter(Boolean);const flat=lines.join(" ").replace(/\s+/g," ");const toks=flat.split(" ");
+  const groups=[];let cur={head:"Base forecast",tokens:[],items:[]};let i=0,m;
+  const out={raw:raw.trim(),station:null,issued:null,valid:null,groups:groups,head:[]};
+  while(i<toks.length){
+    const t=toks[i];
+    if(t==="TAF"||t==="AMD"||t==="COR"){out.head.push({tok:t,label:"Report type",text:t==="TAF"?"Terminal aerodrome forecast":t==="AMD"?"Amended forecast":"Corrected forecast"});i++;continue}
+    if(!out.station&&/^[A-Z][A-Z0-9]{3}$/.test(t)){out.station=t;const ap=AIRPORTS.find(a=>a.icao===t);out.head.push({tok:t,label:"Station",text:t+(ap?" · "+ap.name:"")});i++;continue}
+    if(!out.issued&&(m=t.match(/^(\d{2})(\d{2})(\d{2})Z$/))){out.issued=t;out.head.push({tok:t,label:"Issued",text:"Day "+m[1]+" at "+m[2]+":"+m[3]+" UTC ("+hhmmLocal(+m[1],+m[2],+m[3],now)+")"});i++;continue}
+    if(!out.valid&&(m=t.match(/^(\d{2})(\d{2})\/(\d{2})(\d{2})$/))){out.valid=t;out.head.push({tok:t,label:"Valid",text:"Day "+m[1]+" "+m[2]+":00 UTC through day "+m[3]+" "+m[4]+":00 UTC"});i++;continue}
+    if((m=t.match(/^FM(\d{2})(\d{2})(\d{2})$/))){groups.push(cur);cur={head:"FM "+t.slice(2),tokens:[t],items:[{tok:t,label:"From",text:"Conditions change permanently from day "+m[1]+" at "+m[2]+":"+m[3]+" UTC"}]};i++;continue}
+    if(t==="TEMPO"||t==="BECMG"||/^PROB\d{2}$/.test(t)){
+      groups.push(cur);let hd=t,txt;
+      if(/^PROB/.test(t)){txt=t.slice(4)+"% chance of";if(toks[i+1]==="TEMPO"){hd=t+" TEMPO";txt+=" temporary fluctuations";i++}else txt+=" conditions"}
+      else txt=t==="TEMPO"?"Temporary fluctuations (under an hour at a time)":"Gradual change";
+      i++;let per="";if((m=(toks[i]||"").match(/^(\d{2})(\d{2})\/(\d{2})(\d{2})$/))){per=toks[i];txt+=" between day "+m[1]+" "+m[2]+":00 and day "+m[3]+" "+m[4]+":00 UTC";i++}
+      cur={head:hd+(per?" "+per:""),tokens:[],items:[{tok:hd+(per?" "+per:""),label:"Change group",text:txt}]};continue}
+    if(/^T[XN]M?\d{2}\/\d{4}Z$/.test(t)){cur.items.push({tok:t,label:t[1]==="X"?"Max temperature":"Min temperature",text:t.slice(2).split("/")[0].replace("M","-")+" °C expected"});i++;continue}
+    if(/^\d$/.test(t)&&/^\d\/\dSM$/.test(toks[i+1]||"")){const f=toks[i+1].replace("SM","").split("/");cur.items.push({tok:t+" "+toks[i+1],label:"Visibility",text:t+" "+f[0]+"/"+f[1]+" statute miles"});cur.vis=+t+(+f[0])/(+f[1]);i+=2;continue}
+    const d=decCommon(t,{});
+    if(d){if(d.data){if(d.data.vis!=null)cur.vis=d.data.vis;if(d.data.sky){cur.sky=(cur.sky||[]).concat(d.data.sky)}if(d.data.wind)cur.wind=d.data.wind}cur.items.push({tok:t,label:d.label,text:d.text});i++;continue}
+    cur.items.push({tok:t,label:"Other",text:"Not decoded"});i++;
+  }
+  groups.push(cur);out.groups=groups.filter(g=>g.items.length);
+  out.groups.forEach(g=>{g.cat=flightCat(g.vis,g.sky||[])});
+  return out;
+}
+
+/* ---- parsing fetched/sample text ---- */
+function splitMetars(txt){return txt.split(/\n+/).map(s=>s.trim()).filter(l=>/^(METAR |SPECI )?[A-Z][A-Z0-9]{3} \d{6}Z/.test(l))}
+function splitTafs(txt){const blocks=[];let cur=null;txt.split(/\n/).forEach(l=>{if(!l.trim())return;if(/^\S/.test(l)){if(cur)blocks.push(cur);cur=l.trim()}else if(cur)cur+="\n  "+l.trim()});if(cur)blocks.push(cur);return blocks.filter(b=>/^(TAF )?[A-Z][A-Z0-9]{3} \d{6}Z|^TAF /.test(b))}
+function stationOf(rawLine){const m=rawLine.replace(/^(METAR|SPECI|TAF)( AMD| COR)? /,"").match(/^([A-Z][A-Z0-9]{3})/);return m?m[1]:null}
+
+/* ---- sample weather for the offline preview ---- */
+const COASTAL=["KLAX","KHHR","KSMO","KTOA","KLGB","KSLI","KSNA","KFUL","KSAN","KMYF","KCRQ","KOXR","KCMA"];
+function p2(n){return String(n).padStart(2,"0")}
+function sampleWx(icao,now){
+  now=now||new Date();let h=0;for(const c of icao)h=(h*31+c.charCodeAt(0))>>>0;
+  const t=new Date(now.getTime()-7*60000);const day=p2(t.getUTCDate()),hh=p2(t.getUTCHours()),mm=p2(Math.floor(t.getUTCMinutes()/10)*10+3>59?53:Math.floor(t.getUTCMinutes()/10)*10+3);
+  const coastal=COASTAL.includes(icao);const dir=240+(h%5)*10,spd=5+(h%7),gust=h%3===0?spd+7:null;
+  const sky=coastal?"FEW008 BKN014":"FEW200";const vis=coastal?"6SM HZ":"10SM";const temp=coastal?14+(h%4):10+(h%5),dew=coastal?temp-3:temp-9;
+  const metar="METAR "+icao+" "+day+hh+mm+"Z "+(p2(dir)+"").padStart(3,"0").slice(-3)+p2(spd)+(gust?"G"+p2(gust):"")+"KT "+vis+" "+sky+" "+p2(temp)+"/"+p2(dew)+" A"+(2995+(h%6))+" RMK AO2 SLP"+(150+(h%9))+" T0"+p2(temp)+"0"+"0"+p2(dew)+"0";
+  const st=new Date(Date.UTC(t.getUTCFullYear(),t.getUTCMonth(),t.getUTCDate(),t.getUTCHours()));st.setUTCMinutes(0);
+  const f=(o)=>{const d=new Date(st.getTime()+o*3600000);return p2(d.getUTCDate())+p2(d.getUTCHours())};
+  const taf="TAF "+icao+" "+f(0)+"20Z "+f(0)+"/"+f(24)+" "+p2(dir)+p2(spd)+"KT P6SM "+sky+"\n  FM"+f(6)+"00 27010KT P6SM SCT025\n  TEMPO "+f(10)+"/"+f(14)+" 3SM BR BKN008\n  BECMG "+f(15)+"/"+f(17)+" 25006KT P6SM FEW010\n  PROB30 "+f(20)+"/"+f(23)+" 2SM BR OVC005";
+  return {metar:metar,taf:taf};
+}
+if(typeof module!=="undefined")module.exports={AIRPORTS,PRESETS,distMi,bearing,compass,around,approxAir,sunTimes,decodeMetar,decodeTaf,sampleWx,flightCat,splitMetars,splitTafs,stationOf,dms,CHART,NM,RING,ringInfo};
+
+</script>
+<script>
+/* ===== SkyClear UI ===== */
+const LIMITS={wind:17,gust:22,minVis:3,tempLo:40,tempHi:95};
+const DEV_FIXED_LOCATION=false; // false: ask the device GPS on load, fall back to the first preset (LAX). true: always start on the first preset.
+const WX_PROXY="/api/wx"; // server-side relay (api/wx.js on Vercel). Browsers cannot call aviationweather.gov directly (CORS).
+const MANUAL=[
+ {g:"Pilot confirmations",items:[
+  ["cert","Remote Pilot Certificate (Part 107) in my possession","Carry it on the flight. Show it to the FAA or law enforcement on request."],
+  ["trn","Recurrent training current (every 24 calendar months)","Free online course at faasafety.gov."],
+  ["fit","Fit to fly (IMSAFE)","Illness, medication, stress, alcohol, fatigue, eating."]]},
+ {g:"Registration and Remote ID confirmations",items:[
+  ["reg","Drone registered in FAA DroneZone, number marked on the outside of the aircraft","Part 107 aircraft use the commercial registration. It lasts 3 years."],
+  ["rid","Remote ID broadcast is on and working","Standard Remote ID, or a broadcast module attached to the aircraft."],
+  ["ridm","Remote ID serial or session ID matches the registration record","The ID in the broadcast must match what DroneZone shows."]]},
+ {g:"Aircraft",items:[
+  ["batt","Batteries charged and healthy, spares ready",""],
+  ["prop","Propellers, frame, gimbal and arms inspected",""],
+  ["fw","Firmware, SD card, compass and GPS lock confirmed","Wait for a solid satellite count before launch."],
+  ["rth","Return-to-home altitude set above obstacles, failsafe checked",""]]},
+ {g:"Operation",items:[
+  ["tfr","TFRs checked for this location and time","Open tfr.faa.gov or the FAA B4UFLY map. This app does not read TFRs yet."],
+  ["sua","Restricted, warning, MOA and prohibited areas checked on the chart","Shown shaded on the sectional. None are modeled in this preview."],
+  ["notam","NOTAMs reviewed for the area and time","Use the FAA NOTAM search for the launch point."],
+  ["area","Launch area surveyed for obstacles, wires and people",""],
+  ["ppl","No flight over uninvolved people, area kept clear","Unless the operation qualifies under the over-people rules."],
+  ["los","Visual line of sight kept, visual observer briefed if used",""],
+  ["perm","Landowner permission and state or local rules checked","Parks, schools and private property often have their own rules."],
+  ["plan","Flight plan and emergency landing area agreed",""]]}
+];
+const RIDNAME={std:"Standard Remote ID",mod:"Broadcast module",fria:"FRIA"};
+const MANUAL_IDS=MANUAL.flatMap(g=>g.items.map(i=>i[0]));
+
+const $=s=>document.querySelector(s);
+const esc=t=>String(t==null?"":t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ICON={pass:"✓",caution:"!",fail:"✕",hold:"…"};
+const fmt1=n=>n.toFixed(1);
+const p=n=>String(n).padStart(2,"0");
+const tfmt=d=>d?d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}):"n/a";
+
+const S={
+  loc:{lat:PRESETS[0].lat,lon:PRESETS[0].lon,acc:null,alt:null,src:"preset",label:PRESETS[0].name,presetElev:PRESETS[0].elev},
+  radius:5,wxSel:0,manual:{},laanc:"",pilot:"",cert:"",certDate:"",trnDate:"",model:"",reg:"",regExp:"",ridType:"",ridId:"",
+  scanAt:new Date(),scanId:newId(),
+  gps:{state:"idle",msg:""},
+  wx:{mode:"loading",at:null,stations:[],metar:{},taf:{},err:""},
+  elev:{ft:null,src:""},place:{text:"",src:""},faa:{state:"none",surface:[],grid:null},
+  token:0
+};
+function newId(){const d=new Date();return "SC-"+String(d.getFullYear()).slice(2)+p(d.getMonth()+1)+p(d.getDate())+"-"+p(d.getHours())+p(d.getMinutes())+"-"+Math.floor(Math.random()*65536).toString(16).toUpperCase().padStart(4,"0")}
+
+/* ---- network helpers ---- */
+async function fetchTxt(url,ms){
+  const ac=new AbortController();const to=setTimeout(()=>ac.abort(),ms||7000);
+  try{const r=await fetch(url,{signal:ac.signal});if(!r.ok)throw new Error("HTTP "+r.status);return await r.text()}finally{clearTimeout(to)}
+}
+async function fetchJson(url,ms){return JSON.parse(await fetchTxt(url,ms))}
+
+function awc(kind,qs){return WX_PROXY?WX_PROXY+"?path="+kind+"&"+qs:"https://aviationweather.gov/api/data/"+kind+"?"+qs}
+
+/* ---- derived ---- */
+function derived(){
+  const list=around(S.loc.lat,S.loc.lon);
+  const nearB=list.find(a=>a.cls==="B"),nearC=list.find(a=>a.cls==="C"),nearD=list.find(a=>a.cls==="D");
+  const towered=list.filter(a=>a.twr).slice(0,3);
+  const inRadius=list.filter(a=>a.dist<=S.radius);
+  const wxStations=list.filter(a=>a.icao).slice(0,3);
+  const sun=sunTimes(S.loc.lat,S.loc.lon,new Date());
+  return {list,nearB,nearC,nearD,towered,inRadius,wxStations,sun};
+}
+function currentWx(D){
+  const st=D.wxStations[Math.min(S.wxSel,D.wxStations.length-1)];if(!st)return null;
+  const raw=S.wx.metar[st.icao];if(!raw)return {st,m:null};
+  return {st,m:decodeMetar(raw),raw,tafRaw:S.wx.taf[st.icao]};
+}
+function groundElev(){
+  if(S.elev.ft!=null)return {ft:S.elev.ft,src:S.elev.src};
+  if(S.loc.presetElev!=null)return {ft:S.loc.presetElev,src:"approximate, from the location preset"};
+  if(S.loc.alt!=null)return {ft:Math.round(S.loc.alt*3.281),src:"device GPS altitude"};
+  return {ft:null,src:"unavailable"};
+}
+
+/* ---- checks ---- */
+function buildChecks(D){
+  const C=[];const add=(group,id,label,status,value,detail,src)=>C.push({group,id,label,status,value,detail:detail||"",src:src||""});
+  const L=S.loc,now=new Date();
+  // location
+  if(L.src==="gps"){const s=L.acc<=15?"pass":L.acc<=50?"caution":"fail";add("Location","gps","GPS position",s,L.lat.toFixed(4)+", "+L.lon.toFixed(4)+"  ±"+Math.round(L.acc)+" m",s==="pass"?"Accuracy is good enough to place you in the right airspace cell.":"Accuracy is weak. Move to open sky and refresh.","Device GPS")}
+  else add("Location","gps","Position","caution",L.lat.toFixed(4)+", "+L.lon.toFixed(4),"Entered by hand or picked from a preset, not read from a GPS. Use the GPS button when you are at the launch point.","Manual entry");
+  const cd=new Date(CHART.to+"T23:59:59"),cf=new Date(CHART.from+"T00:00:00");
+  const okc=now>=cf&&now<=cd;
+  add("Location","chart","Chart currency",okc?"pass":"caution",CHART.name+" · valid "+CHART.from+" to "+CHART.to,okc?"Frequencies and airport data come from this chart cycle.":"The chart cycle has ended. Load the new Los Angeles Sectional.","Uploaded sectional");
+  // airspace
+  const hits=approxAir(D.list);let controlled=false,clsTxt,clsStatus,clsDetail,src;
+  if(S.faa.state==="live"){
+    controlled=S.faa.surface.length>0;
+    clsTxt=controlled?S.faa.surface.map(f=>"Class "+f.cls+(f.name?" · "+f.name:"")).join(" · "):"No controlled surface airspace";
+    clsStatus=controlled&&S.laanc.trim().length<6?"caution":"pass";clsDetail=controlled?"The FAA airspace layer reports controlled airspace reaching the ground here. Authorization is required.":"The FAA airspace layer shows no controlled airspace at the surface here.";src="FAA airspace layer · live";
+  } else {
+    controlled=hits.length>0;const order={B:0,C:1,D:2};hits.sort((a,b)=>order[a.cls]-order[b.cls]);
+    if(controlled){clsTxt=hits.map(h=>"Class "+h.cls+" ("+h.a.id+")").join(" · ");clsStatus=S.laanc.trim().length<6?"caution":"pass";clsDetail="Approximate: you are "+hits.map(h=>h.why).join("; ")+". Treat this as controlled airspace and request authorization.";}
+    else{clsTxt="No controlled surface area in the approximate model";clsStatus="caution";clsDetail="Rings are approximate. Confirm on the sectional chart or the FAA UAS Facility Map before flying.";}
+    src="Approximate rings from the chart airport list";
+  }
+  add("Airspace","class","Airspace at launch point",clsStatus,clsTxt,clsDetail,src);
+  if(controlled){
+    const have=S.laanc.trim().length>=6;
+    add("Airspace","laanc","Authorization (LAANC)",have?"pass":"hold",have?"Auth "+S.laanc.trim().toUpperCase():"Needed before launch",
+      (S.faa.grid!=null?"Facility-map grid ceiling here: "+S.faa.grid+" ft AGL. ":"Look up the grid ceiling in your LAANC app. ")+"Request authorization, then enter the number below.","FAA UAS Facility Map / LAANC");
+  }
+  const near=D.list.filter(a=>a.dist<=3);
+  add("Airspace","apt","Airports within 3 mi",near.length&&!controlled?"caution":"pass",near.length?near.map(a=>a.id+" "+fmt1(a.dist)+" mi").join(" · "):"None",near.length?"Manned aircraft may be low and close. "+(controlled?"Your authorization covers the controlled airspace, not the traffic.":"Consider calling the airport operator."):"No charted airports inside the 3 mi ring.","Chart airport list");
+  // altitude
+  const ge=groundElev();const cap=S.faa.grid!=null?Math.min(400,S.faa.grid):400;
+  add("Altitude","elev","Ground elevation (MSL)",ge.ft==null?"caution":"pass",ge.ft==null?"Not available":ge.ft+" ft MSL",
+    (S.loc.alt!=null&&ge.ft!=null?"Device GPS reports "+Math.round(S.loc.alt*3.281)+" ft. ":"")+"AGL is height above the ground at your feet. MSL is height above sea level.",ge.src);
+  const gridUnknown=controlled&&S.faa.grid==null;
+  add("Altitude","ceil","Maximum legal altitude",gridUnknown?"caution":"pass",cap+" ft AGL"+(ge.ft!=null?" = "+(ge.ft+cap)+" ft MSL":"")+(gridUnknown?" (not confirmed)":""),gridUnknown?"This is the standard limit only. In controlled airspace the LAANC grid ceiling can be lower, and the FAA grid data did not load here. Use the ceiling in your LAANC approval.":S.faa.grid!=null&&S.faa.grid<400?"Limited by the LAANC grid.":"Standard 400 ft AGL limit, or within 400 ft of a structure.","14 CFR 107.51");
+  // weather
+  const W=currentWx(D);
+  if(W&&W.m){
+    const m=W.m,sta=W.st.icao,ago=S.wx.mode==="live"?"live":"SAMPLE";
+    const src="METAR "+sta+" · "+ago;
+    const sp=m.wind?m.wind.spd:0,gs=m.wind&&m.wind.gust?m.wind.gust:null;
+    add("Weather","wind","Wind",sp>LIMITS.wind?"fail":sp>=LIMITS.wind*0.8?"caution":"pass",m.wind?(m.wind.dir==="VRB"?"Variable":m.wind.dir+"°")+" at "+sp+" kt":"Not reported","Aircraft limit set to "+LIMITS.wind+" kt sustained (about 20 mph).",src);
+    add("Weather","gust","Gusts",gs==null?"pass":gs>LIMITS.gust?"fail":gs>=LIMITS.gust*0.8?"caution":"pass",gs==null?"None reported":gs+" kt","Aircraft limit set to "+LIMITS.gust+" kt gusts.",src);
+    const v=m.vis;add("Weather","vis","Visibility",v==null?"caution":v<LIMITS.minVis?"fail":v<5?"caution":"pass",v==null?"Not reported":(v>=10?"10+":v)+" SM","Part 107 minimum is 3 statute miles.",src);
+    const cap2=cap;let cs="pass",cv=m.sky.length?"":"No ceiling",cd="";
+    if(m.ceiling){const room=m.ceiling-500;cv="Ceiling "+m.ceiling.toLocaleString()+" ft AGL";if(room<=0){cs="fail";cd="Leaves no room for the required 500 ft below clouds."}else if(room<cap2){cs="caution";cd="Stay under "+room+" ft AGL to keep 500 ft below the clouds."}else cd="500 ft below clouds holds up to your maximum altitude."} else cd="No broken or overcast layer reported.";
+    add("Weather","cloud","Cloud clearance",cs,cv,cd,src);
+    const tf=m.temp==null?null:Math.round(m.temp*9/5+32);
+    add("Weather","temp","Temperature",tf==null?"caution":tf<LIMITS.tempLo||tf>LIMITS.tempHi?"caution":"pass",tf==null?"Not reported":tf+" °F ("+m.temp+" °C)",tf!=null&&(tf<LIMITS.tempLo||tf>LIMITS.tempHi)?"Outside the typical battery range of "+LIMITS.tempLo+" to "+LIMITS.tempHi+" °F.":"Within battery range.",src);
+    const wxs=m.wx.join(" ");const wet=/(RA|DZ|SN|PL|SG|IC|UP|GR|GS|TS|FC)/.test(wxs);const bad=/(TS|FC|GR|GS|\+)/.test(wxs);
+    add("Weather","precip","Precipitation",wet?(bad?"fail":"caution"):"pass",wet?m.wx.join(" "):"None reported",wet?"Most consumer drones are not rated for rain or snow.":"",src);
+  } else add("Weather","wx","Weather report","caution","Not loaded","Press Refresh to pull METAR and TAF.","");
+  // daylight
+  const s=D.sun;let ds="pass",dv="",dd="";
+  if(s.sunrise&&s.sunset){
+    if(now>=s.sunrise&&now<=s.sunset){const mins=Math.round((s.sunset-now)/60000);dv="Daylight · sunset "+tfmt(s.sunset)+" ("+Math.floor(mins/60)+" h "+mins%60+" min)"}
+    else if((now>s.sunset&&now<=s.civilEnd)||(now>=s.civilBegin&&now<s.sunrise)){ds="caution";dv="Civil twilight · sunrise "+tfmt(s.sunrise)+", sunset "+tfmt(s.sunset);dd="Anti-collision lights visible for 3 SM are required."}
+    else{ds="caution";dv="Night · sunrise "+tfmt(s.sunrise)+", sunset "+tfmt(s.sunset);dd="Night flight needs anti-collision lights visible for 3 SM and current night training."}
+  } else dv="Sun times unavailable";
+  add("Weather","sun","Daylight",ds,dv,dd,"Computed for your position");
+  return {C,controlled};
+}
+function overall(C){
+  const f=C.filter(c=>c.status==="fail"),h=C.filter(c=>c.status==="hold"),w=C.filter(c=>c.status==="caution");
+  const left=MANUAL_IDS.filter(id=>!S.manual[id]).length;
+  if(f.length)return {k:"stop",t:"No-go",d:f.length+" blocking condition"+(f.length>1?"s":"")+": "+f.map(c=>c.label.toLowerCase()).join(", ")+"."};
+  if(h.length)return {k:"hold",t:"Hold",d:"Authorization is needed before launch. Enter the LAANC authorization number below."};
+  if(left)return {k:"info",t:"Incomplete",d:left+" pilot confirmation"+(left>1?"s":"")+" remaining."+(w.length?" "+w.length+" caution"+(w.length>1?"s":"")+" noted.":"")};
+  if(w.length)return {k:"warn",t:"Go with cautions",d:w.length+" caution"+(w.length>1?"s":"")+": "+w.map(c=>c.label.toLowerCase()).join(", ")+"."};
+  return {k:"go",t:"Go",d:"All checks passed and the pilot confirmed every item."};
+}
+
+/* ---- graphics ---- */
+function altViz(){
+  const ge=groundElev(),cap=S.faa.grid!=null?Math.min(400,S.faa.grid):400,k=70/400,gy=104,top=gy-400*k,cy=gy-cap*k;
+  return `<svg viewBox="0 0 300 130" role="img" aria-label="Altitude diagram"><rect x="0" y="${gy}" width="300" height="26" fill="#27405a"/>
+  <text x="8" y="${gy+17}" font-size="11" fill="#e8f0f7" font-family="IBM Plex Mono,monospace">Ground ${ge.ft==null?"?":ge.ft} ft MSL</text>
+  <line x1="0" y1="${top}" x2="300" y2="${top}" stroke="#8fa6ba" stroke-dasharray="4 4"/><text x="8" y="${top-4}" font-size="10" fill="#8fa6ba" font-family="IBM Plex Mono,monospace">400 ft AGL standard limit</text>
+  <rect x="190" y="${cy}" width="40" height="${gy-cy}" fill="#3fcf8e" fill-opacity=".25" stroke="#3fcf8e"/><line x1="150" y1="${cy}" x2="300" y2="${cy}" stroke="#3fcf8e" stroke-width="2"/>
+  <text x="152" y="${cy+(cap<150?-5:14)}" font-size="11" fill="#3fcf8e" font-family="IBM Plex Mono,monospace">${cap} ft AGL max</text>
+  ${ge.ft!=null?`<text x="236" y="${gy-6}" font-size="10" fill="#e8f0f7" font-family="IBM Plex Mono,monospace">${ge.ft+cap} MSL</text>`:""}</svg>`;
+}
+
+/* ---- render pieces ---- */
+function rowHTML(c){return `<div class="row"><div class="chip s-${c.status}" aria-label="${c.status}">${ICON[c.status]}</div><div><div class="l">${esc(c.label)}</div><div class="v">${esc(c.value)}</div>${c.detail?`<div class="d">${esc(c.detail)}</div>`:""}<div class="src">${esc(c.src)}</div></div></div>`}
+function pill(c){return `<span class="cat cat-${c}">${c}</span>`}
+function classPill(a){return a.cls?`<span class="cls cls-${a.cls}">Class ${a.cls}</span>`:`<span class="cls cls-0">No tower</span>`}
+function wherePanel(D){
+  const L=S.loc,ge=groundElev(),s=D.sun,n=D.list[0];
+  const kv=(k,v)=>`<div class="kv"><span>${k}</span><b>${v}</b></div>`;
+  const place=S.place.text||(n.id+" "+fmt1(n.dist)+" mi "+compass(bearing(n.lat,n.lon,L.lat,L.lon))+" of the airport");
+  return `<section class="grp"><h2>Where you are standing<small>${L.src==="gps"?"GPS fix":L.src==="preset"?"preset location":"manual position"}</small></h2>
+  <div class="kvs">
+   ${kv("Position",L.lat.toFixed(5)+", "+L.lon.toFixed(5))}
+   ${kv("Degrees",dms(L.lat,"N","S")+"<br>"+dms(L.lon,"E","W"))}
+   ${kv("Near",esc(place))}
+   ${kv("Ground elevation",ge.ft==null?"n/a":ge.ft+" ft MSL<small>"+esc(ge.src)+"</small>")}
+   ${kv("GPS accuracy",L.acc==null?"n/a":"±"+Math.round(L.acc)+" m"+(L.alt!=null?"<small>device altitude "+Math.round(L.alt*3.281)+" ft</small>":""))}
+   ${kv("Chart",CHART.name+"<small>"+CHART.from+" to "+CHART.to+"</small>")}
+   ${kv("Sunrise / sunset",tfmt(s.sunrise)+" / "+tfmt(s.sunset)+"<small>civil twilight ends "+tfmt(s.civilEnd)+"</small>")}
+   ${kv("Nearest tower",esc(D.towered[0].id)+" · "+fmt1(D.towered[0].dist)+" mi "+compass(D.towered[0].brg))}
+  </div></section>`;
+}
+function aroundPanel(D){
+  const tile=(label,a)=>a?`<div class="tile"><div class="tl">${label}</div><div class="tn">${esc(a.id)} · ${esc(a.name)}</div><div class="tv">${fmt1(a.dist)} mi <small>${fmt1(a.nm)} NM · ${compass(a.brg)} (${Math.round(a.brg)}°)</small></div>${ringInfo(a)?`<div class="td">${a.nm<=ringInfo(a).r?"Inside the approximate surface area":"About "+fmt1(Math.max(0,(a.nm-ringInfo(a).r)*NM))+" mi to the approximate edge"}</div>`:`<div class="td">Class B tiers reach about 30 NM. Check floors on the chart.</div>`}</div>`:`<div class="tile"><div class="tl">${label}</div><div class="tn">None on this chart</div></div>`;
+  const rows=D.inRadius.map(a=>`<tr><td><b>${esc(a.id)}</b></td><td>${esc(a.name)}</td><td>${classPill(a)}</td><td class="n">${fmt1(a.dist)} mi<small>${fmt1(a.nm)} NM</small></td><td class="n">${compass(a.brg)} ${Math.round(a.brg)}°</td></tr>`).join("");
+  return `<section class="grp"><h2>Around you<small>${S.radius} mile radius</small></h2>
+  <div class="seg" role="group" aria-label="Radius">${[3,5,10].map(r=>`<button data-r="${r}" aria-pressed="${S.radius===r}">${r} mi</button>`).join("")}</div>
+  <p class="d2 pad">The map above shows these on the sectional chart. Shaded circles are approximations of the surface areas. Real shapes are irregular, so the chart and the FAA map decide.</p>
+  <div class="tiles">${tile("Nearest Class B (Bravo)",D.nearB)}${tile("Nearest Class C (Charlie)",D.nearC)}${tile("Nearest Class D (Delta)",D.nearD)}</div>
+  <div class="scroll"><table class="tb"><thead><tr><th>ID</th><th>Airport</th><th>Class</th><th>Distance</th><th>Bearing</th></tr></thead><tbody>${rows||`<tr><td colspan="5" class="muted">No charted airports inside ${S.radius} miles.</td></tr>`}</tbody></table></div></section>`;
+}
+function facilitiesPanel(D){
+  const cards=D.towered.map(a=>`<div class="fac"><div class="fh"><b>${esc(a.id)}</b> ${esc(a.name)} ${classPill(a)}<span class="fd">${fmt1(a.dist)} mi ${compass(a.brg)}</span></div>
+   <dl><dt>Tower hours</dt><dd>${esc(a.hrs)}</dd><dt>Tower</dt><dd>${esc(a.twr)}</dd><dt>Ground</dt><dd>${esc(a.gnd)}</dd><dt>ATIS</dt><dd>${esc(a.atis)}</dd><dt>Approach</dt><dd>${esc(a.app)}</dd></dl></div>`).join("");
+  return `<section class="grp"><h2>Nearby towers and frequencies<small>3 nearest, for reference</small></h2><div class="facs">${cards}</div>
+  <p class="foot2">Frequencies are read from the margin tables of the ${CHART.name}, effective ${CHART.from} to ${CHART.to}. Tower hours are local time, and outside those hours the airspace may revert to Class E or G. Drone pilots do not check in with a tower or an FAA office. Request authorization through LAANC where the airspace needs it.</p></section>`;
+}
+function bdRows(items){return items.map(i=>`<tr><td class="tk">${esc(i.tok)}</td><td class="lb">${esc(i.label)}</td><td>${esc(i.text)}</td></tr>`).join("")}
+function wxPanel(D){
+  const mode=S.wx.mode,st=D.wxStations;
+  const tabs=st.map((a,i)=>`<button data-w="${i}" aria-pressed="${i===S.wxSel}">${esc(a.icao)}<small>${fmt1(a.dist)} mi</small></button>`).join("");
+  const W=currentWx(D);let body="";
+  const banner=mode==="live"?`<div class="srcbar live">Live · aviationweather.gov · fetched ${tfmt(S.wx.at)}</div>`:mode==="loading"?`<div class="srcbar">Loading METAR and TAF…</div>`:`<div class="srcbar sample">Sample text. Live METAR and TAF need the weather proxy turned on (Requirements tab, Data sources).${S.wx.err?" ("+esc(S.wx.err)+")":""}</div>`;
+  if(W&&W.m){
+    const m=W.m;
+    body+=`<div class="wxh"><b>${esc(W.st.icao)}</b> ${esc(W.st.name)} ${pill(m.cat)}</div>
+    <div class="lbl">METAR, standard format</div><pre class="raw">${esc(W.raw)}</pre>
+    <div class="lbl">METAR, element by element</div><div class="scroll"><table class="bd">${bdRows(m.items)}</table></div>`;
+    if(W.tafRaw){const t=decodeTaf(W.tafRaw);
+      body+=`<div class="lbl">TAF, standard format</div><pre class="raw">${esc(W.tafRaw)}</pre><div class="lbl">TAF, element by element</div>`;
+      body+=`<div class="scroll"><table class="bd">${bdRows(t.head)}</table></div>`;
+      t.groups.forEach(g=>{body+=`<div class="gh">${esc(g.head)} ${pill(g.cat)}</div><div class="scroll"><table class="bd">${bdRows(g.items)}</table></div>`});
+    } else body+=`<p class="muted pad">No TAF is issued for this station.</p>`;
+  } else body+=`<p class="muted pad">No report loaded yet.</p>`;
+  return `<section class="grp"><h2>METAR and TAF<small>3 nearest reporting stations</small></h2>${banner}<div class="seg" role="group" aria-label="Station">${tabs}<button id="wxrefresh" class="rf">Refresh</button></div>${body}</section>`;
+}
+
+/* ---- main render ---- */
+let LAST={};
+function render(){
+  const D=derived();const {C,controlled}=buildChecks(D);const ov=overall(C);LAST={D,C,ov,controlled};
+  const loading=S.wx.mode==="loading";
+  const ge0=groundElev(),gridOk=S.faa.grid!=null,cap0=gridOk?Math.min(400,S.faa.grid):400,unk=controlled&&!gridOk;
+  const altl=`<div class="altline"><div><span>Fly up to</span><b>${cap0} ft AGL</b></div><div><span>Equals</span><b>${ge0.ft==null?"? ft MSL":(ge0.ft+cap0)+" ft MSL"}</b></div><div><span>Ground here</span><b>${ge0.ft==null?"?":ge0.ft} ft MSL</b></div><div class="authl ${controlled?"need":"none"}"><span>Authorization</span><b>${controlled?(S.laanc?"LAANC "+esc(S.laanc.toUpperCase()):"LAANC needed"):"None needed"}</b></div></div>${unk?`<p class="altwarn">Ceiling not confirmed. In controlled airspace the LAANC grid can be lower than 400 ft. Use the altitude in your LAANC approval.</p>`:""}`;
+  laancNow(loading,controlled,cap0,gridOk,ge0);
+  $("#banner").innerHTML=loading?`<div class="banner b-info"><div class="big">Scanning…</div><p>Reading position, airspace and weather.</p></div>`:`<div class="banner b-${ov.k}"><div class="big">${ov.t}</div><p>${esc(ov.d)}</p></div>${altl}`;
+  $("#badge").textContent=S.wx.mode==="live"?"Live weather":S.wx.mode==="loading"?"Loading":"Preview · sample weather";
+  $("#badge").className="badge "+(S.wx.mode==="live"?"ok":"");
+  let html=wherePanel(D)+aroundPanel(D)+facilitiesPanel(D)+wxPanel(D);
+  ["Airspace","Altitude","Weather","Location"].forEach(g=>{
+    const rows=C.filter(c=>c.group===g);if(!rows.length)return;
+    let body="";
+    if(g==="Altitude")body+=`<div class="viz"><div>${altViz()}</div><div><div class="l">Height above ground and above sea level</div><p class="d2">The aircraft altitude readout is usually height above the takeoff point. Add ground elevation to compare with MSL charts.</p></div></div>`;
+    body+=rows.map(rowHTML).join("");
+    if(g==="Airspace")body+=`<div class="fields"><div><label for="laanc">LAANC authorization number</label><input id="laanc" autocomplete="off" placeholder="${controlled?"Enter after approval":"Not required here"}" value="${esc(S.laanc)}" ${controlled?"":"disabled"}></div></div>`;
+    html+=`<section class="grp"><h2>${g==="Location"?"Position and chart":g}<small>${rows.filter(c=>c.status==="pass").length}/${rows.length} clear</small></h2>${body}</section>`;
+  });
+  const done=MANUAL_IDS.filter(id=>S.manual[id]).length;
+  const today=new Date();today.setHours(0,0,0,0);
+  const addM=(ds,n)=>{if(!ds)return null;const d=new Date(ds+"T00:00:00");if(isNaN(d))return null;d.setMonth(d.getMonth()+n);return d};
+  const dstat=(d,okTxt)=>d?(d<today?`<small class="bad">Expired ${d.toLocaleDateString()}</small>`:`<small class="ok">${okTxt} ${d.toLocaleDateString()}</small>`):"";
+  const trnDue=addM(S.trnDate,24)&&(()=>{const d=addM(S.trnDate,25);d.setDate(1);d.setDate(0);return d})(); // end of 24th calendar month
+  const regEnd=S.regExp?new Date(S.regExp+"T00:00:00"):null;
+  const fld=(id,label,ph,val,extra)=>`<div><label for="${id}">${label}</label><input id="${id}" value="${esc(val)}" placeholder="${ph}" autocomplete="off" ${extra||""}>`;
+  let m=`<section class="grp"><h2>Pilot, drone and Remote ID<small>${done}/${MANUAL_IDS.length} confirmed</small></h2><div class="bar"><i style="width:${done/MANUAL_IDS.length*100}%"></i></div>
+  <div class="saved">${hasProfile()?`<span>✓ Saved on this device. It fills in automatically next time.</span><button id="profclear" type="button">Clear saved info</button>`:`<span>Fill this in once. SkyClear saves it on this device only and fills it in every time you open the app.</span>`}</div>
+  <div class="sub">Remote Pilot Certificate</div>
+  <div class="fields"><div><label for="pilot">Pilot name</label><input id="pilot" value="${esc(S.pilot)}" placeholder="Full name" autocomplete="off"></div>
+   ${fld("cert","Certificate number","Part 107 certificate no.",S.cert)}</div>
+   <div><label for="certDate">Certificate issued</label><input id="certDate" type="date" value="${esc(S.certDate)}"></div>
+   <div><label for="trnDate">Last recurrent training</label><input id="trnDate" type="date" value="${esc(S.trnDate)}">${dstat(trnDue,"Current through")}</div></div>
+  <div class="sub">Drone registration</div>
+  <div class="fields">${fld("model","Aircraft make and model","DJI Mavic 3, Skydio X10…",S.model)}</div>
+   ${fld("reg","FAA registration number","FA3xxxxxxx",S.reg)}</div>
+   <div><label for="regExp">Registration expires</label><input id="regExp" type="date" value="${esc(S.regExp)}">${dstat(regEnd,"Valid until")}</div></div>
+  <div class="sub">Remote ID</div>
+  <div class="fields"><div><label for="ridType">Compliance method</label><select id="ridType"><option value="">Choose…</option>${[["std","Standard Remote ID (built in)"],["mod","Broadcast module attached"],["fria","Flying inside an FRIA"]].map(o=>`<option value="${o[0]}" ${S.ridType===o[0]?"selected":""}>${o[1]}</option>`).join("")}</select></div>
+   ${fld("ridId","Remote ID serial or session ID","From the aircraft or module label",S.ridId)}</div></div>`;
+  MANUAL.forEach(g=>{m+=`<div class="sub">${g.g}</div>`;g.items.forEach(([id,t,s])=>{m+=`<label class="todo"><input type="checkbox" data-id="${id}" ${S.manual[id]?"checked":""}><span><b>${esc(t)}</b>${s?`<small>${esc(s)}</small>`:""}</span></label>`})});
+  html+=m+"</section>";
+  const ae=document.activeElement,aid=ae&&ae.id,caret=ae&&ae.selectionStart;
+  const sy=window.scrollY;$("#groups").innerHTML=html;window.scrollTo(0,sy);
+  if(aid&&["laanc","pilot","cert","certDate","trnDate","model","reg","regExp","ridType","ridId"].includes(aid)){const e=document.getElementById(aid);if(e){e.focus();try{e.setSelectionRange(caret,caret)}catch(_){}}}
+  renderCard();
+}
+function renderCard(){
+  const {D,C,ov}=LAST;const t=S.scanAt,L=S.loc;
+  const local=t.getFullYear()+"-"+p(t.getMonth()+1)+"-"+p(t.getDate())+" "+p(t.getHours())+":"+p(t.getMinutes());
+  const utc=p(t.getUTCHours())+":"+p(t.getUTCMinutes())+"Z";
+  const cls={go:"c-go",warn:"c-warn",stop:"c-stop",hold:"c-hold",info:"c-info"}[ov.k];
+  const done=MANUAL_IDS.filter(id=>S.manual[id]).length;const ge=groundElev();const W=currentWx(D);
+  const rows=C.map(c=>`<tr><td class="m-${c.status}">${ICON[c.status]}</td><td>${esc(c.label)}</td><td class="v">${esc(c.value)}</td></tr>`).join("");
+  const sample=S.wx.mode!=="live";
+  $("#card").innerHTML=`<div class="sample ${sample?"":"liveb"}">${sample?"Preview · sample weather · not a real flight record":"Live weather · pilot self-certified record"}</div>
+  <div class="head"><h3>Pre-flight<br>record</h3><div class="id">${S.scanId}<br><span id="valid"></span></div></div>
+  <div class="st ${cls}">${S.wx.mode==="loading"?"Scanning…":ov.t}</div>
+  <dl class="meta">
+   <dt>Pilot</dt><dd>${esc(S.pilot||"not entered")}</dd><dt>Remote Pilot Cert</dt><dd>${esc(S.cert||"not entered")}</dd><dt>Aircraft</dt><dd>${esc(S.model||"not entered")}</dd><dt>Registration</dt><dd>${esc(S.reg||"not entered")}${S.regExp?" (exp "+esc(S.regExp)+")":""}</dd><dt>Remote ID</dt><dd>${esc(RIDNAME[S.ridType]||"not entered")}${S.ridId?" · "+esc(S.ridId):""}</dd>
+   <dt>Position</dt><dd>${L.lat.toFixed(5)}, ${L.lon.toFixed(5)} (${L.src==="gps"?"GPS ±"+Math.round(L.acc)+" m":L.src})</dd>
+   <dt>Scanned</dt><dd>${local} local · ${utc}</dd>
+   <dt>Ground / max</dt><dd>${ge.ft==null?"?":ge.ft} ft MSL / ${(S.faa.grid!=null?Math.min(400,S.faa.grid):400)} ft AGL</dd>
+   <dt>Nearest Class B</dt><dd>${D.nearB?D.nearB.id+" "+fmt1(D.nearB.dist)+" mi "+compass(D.nearB.brg):"n/a"}</dd>
+   <dt>Authorization</dt><dd>${LAST.controlled?esc(S.laanc?"LAANC "+S.laanc.toUpperCase():"required, not yet entered"):"not required"}</dd>
+   <dt>Weather</dt><dd>${W&&W.m?esc(W.st.icao)+" "+W.m.cat+(sample?" (sample)":""):"n/a"}</dd>
+   <dt>Pilot checks</dt><dd>${done} of ${MANUAL_IDS.length} confirmed</dd></dl>
+  <table aria-label="Check results">${rows}</table>
+  <div class="foot"><div class="qr">QR to verify page in live build</div><div class="hash"><small>Record fingerprint (SHA-256)</small><span id="hash">…</span><small style="margin-top:4px">Any change to the record changes this code.</small></div></div>
+  <div class="actions"><button id="copy">Copy record text</button></div><div class="copybox" id="copybox"></div>
+  <div class="legal">Pilot self-certified record. It is not an FAA authorization or approval. The remote pilot in command stays responsible for compliance with 14 CFR Part 107 and for confirming every source before flight.</div>`;
+  const rec={id:S.scanId,scanned:t.toISOString(),status:ov.t,pilot:S.pilot||null,cert:S.cert||null,reg:S.reg||null,regExp:S.regExp||null,model:S.model||null,ridType:S.ridType||null,ridId:S.ridId||null,trnDate:S.trnDate||null,laanc:S.laanc||null,lat:L.lat,lon:L.lon,src:L.src,metar:W&&W.raw||null,checks:C.map(c=>[c.id,c.status,c.value]),manual:MANUAL_IDS.map(id=>[id,!!S.manual[id]])};
+  sha(JSON.stringify(rec)).then(h=>{const e=$("#hash");if(e)e.textContent=h.slice(0,32).toUpperCase().replace(/(.{8})/g,"$1 ").trim()});
+  $("#copy").onclick=()=>copyText(ov,local,utc,W,D);tick();
+}
+async function sha(txt){try{const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(txt));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}catch(e){let h=5381;for(const ch of txt)h=((h<<5)+h+ch.charCodeAt(0))>>>0;return h.toString(16).padStart(8,"0").repeat(8)}}
+function tick(){const e=$("#valid");if(!e)return;const mins=60-Math.floor((Date.now()-S.scanAt.getTime())/60000);e.textContent=mins>0?"valid "+mins+" min":"EXPIRED, rescan"}
+setInterval(tick,15000);
+function copyText(ov,local,utc,W,D){
+  const L=S.loc;
+  const lines=["PRE-FLIGHT RECORD "+(S.wx.mode==="live"?"":"(PREVIEW, SAMPLE WEATHER) ")+S.scanId,"Status: "+ov.t,"Pilot: "+(S.pilot||"-")+" | Remote Pilot Cert: "+(S.cert||"-"),"Aircraft: "+(S.model||"-")+" | Reg: "+(S.reg||"-")+(S.regExp?" (exp "+S.regExp+")":"")+" | Remote ID: "+(RIDNAME[S.ridType]||"-")+" "+(S.ridId||""),"Position: "+L.lat.toFixed(5)+", "+L.lon.toFixed(5)+" ("+L.src+") | Scanned "+local+" local ("+utc+")","Nearest Class B: "+(D.nearB?D.nearB.id+" "+fmt1(D.nearB.dist)+" mi":"n/a"),""].concat(LAST.C.map(c=>"["+c.status.toUpperCase()+"] "+c.label+": "+c.value));
+  if(W&&W.raw){lines.push("","METAR: "+W.raw);if(W.tafRaw)lines.push("TAF: "+W.tafRaw.replace(/\n\s*/g," "))}
+  lines.push("","Pilot checks: "+MANUAL_IDS.filter(id=>S.manual[id]).length+"/"+MANUAL_IDS.length,"Fingerprint: "+($("#hash")?$("#hash").textContent:""));
+  const txt=lines.join("\n"),box=$("#copybox");const show=()=>{box.style.display="block";box.textContent=txt};
+  try{navigator.clipboard.writeText(txt).then(()=>{$("#copy").textContent="Copied";setTimeout(()=>{const b=$("#copy");if(b)b.textContent="Copy record text"},1600)}).catch(show)}catch(e){show()}
+}
+
+/* ---- data loading ---- */
+async function loadAll(){
+  const tok=++S.token;S.scanAt=new Date();S.scanId=newId();
+  S.wx.mode="loading";S.elev={ft:null,src:""};S.place={text:"",src:""};S.faa={state:"none",surface:[],grid:null};
+  const D=derived();render();mapUpdate(true);
+  const L=S.loc;
+  const ids=D.wxStations.map(a=>a.icao);
+  const jobs=[];
+  jobs.push((async()=>{
+    try{
+      const [mj,tj]=await Promise.all([fetchJson(awc("metar","ids="+ids.join(",")+"&format=json"),9000),fetchJson(awc("taf","ids="+ids.join(",")+"&format=json"),9000).catch(()=>[])]);
+      if(tok!==S.token)return;
+      const metar={},taf={},obs={};
+      (Array.isArray(mj)?mj:[]).forEach(o=>{const s=o.icaoId;if(s&&o.rawOb&&!metar[s]){metar[s]=o.rawOb;obs[s]=o}});
+      (Array.isArray(tj)?tj:[]).forEach(o=>{const s=o.icaoId;if(s&&o.rawTAF&&!taf[s])taf[s]=o.rawTAF});
+      if(!Object.keys(metar).length)throw new Error("no METAR returned");
+      S.wx={mode:"live",at:new Date(),stations:ids,metar,taf,obs,err:""};
+    }catch(e){
+      if(tok!==S.token)return;
+      const metar={},taf={};ids.forEach(i=>{const s=sampleWx(i);metar[i]=s.metar;taf[i]=s.taf});
+      S.wx={mode:"sample",at:new Date(),stations:ids,metar,taf,err:e&&e.name==="AbortError"?"timed out":"blocked or offline"};
+    }
+    render();
+  })());
+  jobs.push((async()=>{try{const j=await fetchJson("https://epqs.nationalmap.gov/v1/json?x="+L.lon+"&y="+L.lat+"&units=Feet&wkid=4326&includeDate=false");if(tok!==S.token)return;const v=Number(j.value);if(isFinite(v)&&v>-500){S.elev={ft:Math.round(v),src:"USGS elevation service"};render()}}catch(e){}})());
+  jobs.push((async()=>{try{const j=await fetchJson("https://api.weather.gov/points/"+L.lat.toFixed(4)+","+L.lon.toFixed(4));if(tok!==S.token)return;const r=j.properties.relativeLocation.properties;S.place={text:r.city+", "+r.state,src:"NWS"};render()}catch(e){}})());
+  jobs.push((async()=>{
+    try{
+      const q=(svc,fields)=>"https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/"+svc+"/FeatureServer/0/query?where=1%3D1&geometry="+L.lon+"%2C"+L.lat+"&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields="+fields+"&returnGeometry=false&f=json";
+      const a=await fetchJson(q("Class_Airspace","*"),9000);if(tok!==S.token)return;
+      if(!a.features)throw new Error("bad layer");
+      const surface=a.features.map(f=>f.attributes).filter(x=>x.CLASS&&["B","C","D","E"].includes(String(x.CLASS).toUpperCase())&&(Number(x.LOWER_VAL)<=0)).map(x=>({cls:String(x.CLASS).toUpperCase(),name:x.NAME||x.ICAO_ID||""}));
+      let grid=null;try{const g=await fetchJson(q("FAA_UAS_FacilityMap_Data","*"),9000);const f=(g.features||[]).map(f=>Number(f.attributes.CEILING)).filter(n=>isFinite(n));if(f.length)grid=Math.min(...f)}catch(e){}
+      if(tok!==S.token)return;S.faa={state:"live",surface,grid};render();
+    }catch(e){}
+  })());
+  await Promise.all(jobs);
+}
+function setLoc(lat,lon,src,label,extra){S.loc=Object.assign({lat,lon,acc:null,alt:null,src,label,presetElev:null},extra||{});$("#lat").value=lat.toFixed(5);$("#lon").value=lon.toFixed(5);S.wxSel=0;loadAll()}
+function useGps(auto){
+  const st=$("#gpsmsg");
+  if(!navigator.geolocation){st.textContent="This browser has no GPS access. Pick a preset or type coordinates.";return}
+  st.textContent="Waiting for GPS…";
+  try{navigator.geolocation.getCurrentPosition(pos=>{const c=pos.coords;st.textContent="GPS fix ±"+Math.round(c.accuracy)+" m";setLoc(c.latitude,c.longitude,"gps","My position",{acc:c.accuracy,alt:c.altitude})},err=>{st.textContent=(auto?"Showing "+S.loc.label+" (default). ":"")+(err.code===1?"GPS is blocked or was refused here.":"No GPS fix.")+" Pick a preset, tap the map, or type coordinates."},{enableHighAccuracy:true,timeout:12000,maximumAge:0})}
+  catch(e){st.textContent="GPS is not available here. Pick a preset or type coordinates."}
+}
+
+
+/* ---- map (Leaflet) ---- */
+let MAP=null,MAPL=null,PIN=false,CHARTL=null,CHARTS=[],YOU=null;
+const CB=[[33.40,-118.95],[34.45,-117.10]]; // bounds of the georeferenced sectional crop
+function mapInit(){
+  if(typeof L==="undefined"){$("#map").innerHTML='<p class="muted pad">The map library did not load.</p>';return}
+  MAP=L.map("map",{zoomControl:true,minZoom:7,maxZoom:17,zoomSnap:0.5,attributionControl:true}).setView([S.loc.lat,S.loc.lon],12);
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Tiles © Esri"}).addTo(MAP);
+  CHARTL=L.imageOverlay("chart-basin.jpg",CB,{opacity:.85,interactive:false}).addTo(MAP);
+  const SFT=L.tileLayer("s/{z}/{x}/{y}.webp",{tileSize:512,zoomOffset:-1,minNativeZoom:10,maxNativeZoom:11,maxZoom:17,opacity:.85,bounds:L.latLngBounds([[36,-125],[40.21,-118]]),errorTileUrl:"data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="}).addTo(MAP);
+  const SDT=L.tileLayer("d/{z}/{x}/{y}.webp",{tileSize:512,zoomOffset:-1,minNativeZoom:9,maxNativeZoom:11,maxZoom:17,opacity:.85,bounds:L.latLngBounds([[32.49,-117.99],[33.62,-116.29]]),errorTileUrl:"data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="}).addTo(MAP);
+  CHARTS=[CHARTL,SFT,SDT];
+  MAP.attributionControl.addAttribution("Charts: FAA Los Angeles and San Francisco VFR Sectionals, San Diego VFR Terminal Area Chart");
+  L.control.scale({imperial:true,metric:false,position:"bottomleft"}).addTo(MAP);
+  MAPL=L.layerGroup().addTo(MAP);
+  MAP.on("click",e=>{if(!PIN)return;setPin(false);setLoc(e.latlng.lat,e.latlng.lng,"manual","Dropped pin")});
+  $("#chartop").oninput=e=>{CHARTS.forEach(c=>c.setOpacity(e.target.value/100));$("#chartopv").textContent=e.target.value+"%"};
+  $("#chartvis").onchange=e=>{CHARTS.forEach(c=>{if(e.target.checked)c.addTo(MAP);else MAP.removeLayer(c)})};
+  $("#recenter").onclick=()=>mapUpdate(true);
+  $("#pinbtn").onclick=()=>setPin(!PIN);
+  setTimeout(()=>{MAP.invalidateSize();mapUpdate(true)},150);
+  mapUpdate(true);
+}
+function setPin(on){PIN=on;const b=$("#pinbtn");b.setAttribute("aria-pressed",on);b.textContent=on?"Tap the map to set position…":"Drop pin";$("#map").classList.toggle("pinning",on)}
+function mapUpdate(fit){
+  if(!MAP)return;
+  const Lc=S.loc,D=derived(),MI=1609.344,ll=[Lc.lat,Lc.lon];
+  MAPL.clearLayers();
+  // approximate controlled-airspace rings
+  D.list.forEach(ap=>{
+    if(ap.dist>S.radius+30)return;
+    const ri=ringInfo(ap);
+    if(ap.cls==="B"){L.circle([ap.lat,ap.lon],{radius:6*NM*MI,color:"#7b5cff",weight:2,dashArray:"6 5",fillColor:"#7b5cff",fillOpacity:.08,interactive:false}).addTo(MAPL)}
+    else if(ri){const col=ap.cls==="C"?"#c04bff":"#1a9bff";L.circle([ap.lat,ap.lon],{radius:ri.r*NM*MI,color:col,weight:2,fillColor:col,fillOpacity:.1,interactive:false}).addTo(MAPL)}
+    if(ap.dist<=Math.max(S.radius*2.5,12)){
+      L.marker([ap.lat,ap.lon],{interactive:true,keyboard:false,icon:L.divIcon({className:"apt",html:'<span class="apd"></span><span class="apl">'+esc(ap.id)+"</span>",iconSize:[0,0]})}).bindTooltip(esc(ap.id)+" · "+esc(ap.name)+(ap.cls?" · Class "+ap.cls:" · no tower")+" · "+fmt1(ap.dist)+" mi",{direction:"top"}).addTo(MAPL)}
+  });
+  // search radius
+  L.circle(ll,{radius:S.radius*MI,color:"#0a7d4d",weight:2,dashArray:"2 6",fill:false,interactive:false}).addTo(MAPL);
+  if(S.loc.acc)L.circle(ll,{radius:S.loc.acc,color:"#1f6fe5",weight:1,fillColor:"#1f6fe5",fillOpacity:.15,interactive:false}).addTo(MAPL);
+  L.circleMarker(ll,{radius:8,color:"#fff",weight:3,fillColor:"#12b76a",fillOpacity:1}).bindTooltip("You · "+Lc.lat.toFixed(5)+", "+Lc.lon.toFixed(5)).addTo(MAPL);
+  if(fit){const dy=S.radius*1.15/69.0,dx=dy/Math.cos(toRad(Lc.lat));MAP.fitBounds([[Lc.lat-dy,Lc.lon-dx],[Lc.lat+dy,Lc.lon+dx]],{animate:false,maxZoom:15})}
+}
+function mapSize(){if(MAP)setTimeout(()=>MAP.invalidateSize(),50)}
+
+/* ---- tabs ---- */
+function showTab(){
+  const h=(location.hash||"").replace("#",""),t=h==="requirements"?"req":h==="laanc"?"laanc":"pre";
+  $("#view-pre").hidden=t!=="pre";$("#view-req").hidden=t!=="req";$("#view-laanc").hidden=t!=="laanc";
+  document.querySelectorAll("[data-tab]").forEach(b=>b.setAttribute("aria-current",b.dataset.tab===t?"page":"false"));
+  $(".locbar").style.display=t==="pre"?"":"none";$("#gpsmsg").style.display=t==="pre"?"":"none";
+  if(t==="pre")mapSize();
+  window.scrollTo(0,0);
+}
+window.addEventListener("hashchange",showTab);
+document.addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b){e.preventDefault();location.hash=b.dataset.tab==="req"?"requirements":b.dataset.tab==="laanc"?"laanc":"preflight"}});
+
+function reqHTML(){
+  const card=(h,b)=>`<section class="grp"><h2>${h}</h2><div class="req">${b}</div></section>`;
+  const offices=[["Los Angeles (El Segundo)","777 S. Aviation Blvd, Suite 150, El Segundo, CA 90245","(424) 405-7870","(424) 405-7866"],["Van Nuys","16501 Sherman Way, Suite 330, Van Nuys, CA 91406","(818) 267-3300","(818) 786-9732"],["Long Beach","5001 Airport Plaza Dr, Suite 100, Long Beach, CA 90815","(562) 377-5400","(562) 377-5448"],["Riverside","6961 Flight Road, Riverside, CA 92504","(951) 276-6701","(951) 689-4309"],["San Diego","9665 Granite Ridge Dr, Suite 200, San Diego, CA 92123","(858) 810-2626","(858) 810-2637"]];
+  return `<div class="reqhead"><h1>Requirements</h1><p>What a drone pilot needs in place before flying, and what this app checks for you. None of this needs a visit or a call to an FAA office.</p></div>
+  ${card("Remote Pilot Certificate",`<p>The pilot passes the FAA knowledge test and applies through IACRA using FAA Form 8710-13. Part of that application, the identity check, can be done with a certified flight instructor or another authorized person. A FSDO is not needed for it.</p><p class="note">In this app: certificate number, issue date and recurrent training date are recorded on the record card.</p>`)}
+  ${card("Drone registration and Remote ID",`<p>The drone is registered on the FAA DroneZone site, and the Remote ID rules apply. The registration number goes on the outside of the aircraft, and the aircraft broadcasts Remote ID (built in, with an attached module, or inside an FRIA).</p><p class="note">In this app: registration number and expiry, the Remote ID method and ID, and a broadcast check.</p>`)}
+  ${card("Airspace authorization",`<p>In controlled airspace (Class B, C, D or E surface areas) the pilot gets approval through LAANC. LAANC is built into approved apps and is also available through DroneZone. Much of the LA basin is controlled airspace near LAX, Hawthorne and Torrance, so this comes up often.</p><p class="note">In this app: the airspace checks tell you when authorization is needed, and the record keeps the LAANC number.</p>`)}
+  ${card("Waivers",`<p>Night flights are allowed with the right training and lighting. Flying over people, beyond line of sight, or multiple aircraft at once may need a waiver or specific compliance. Those requests go through DroneZone, not a FSDO.</p>`)}
+  ${card("Data sources",`<ul><li><b>Airspace, towers and frequencies:</b> ${esc(CHART.name)}, effective ${esc(CHART.from)} to ${esc(CHART.to)}. The sectional you uploaded is the map layer.</li><li><b>METAR and TAF:</b> aviationweather.gov data API. It is free with no key, limited to 100 requests a minute, and it does not allow calls straight from a web page, so the live app needs a small server-side proxy. Until then the weather shows labeled sample text.</li><li><b>Ground elevation:</b> USGS elevation service. <b>Place name:</b> National Weather Service.</li><li><b>Not yet read by this app:</b> TFRs, NOTAMs and special use airspace. Check tfr.faa.gov and the FAA B4UFLY map.</li></ul>`)}
+  <section class="grp"><h2>FAA offices, Southern California<small>reference only</small></h2><p class="pad muted" style="padding-bottom:0">Flight Standards District Offices. A drone pilot does not check in with them for a flight. They are listed here so you have the contact details.</p><div class="scroll"><table class="tb"><thead><tr><th>Office</th><th>Address</th><th>Phone</th><th>Fax</th></tr></thead><tbody>${offices.map(o=>`<tr><td><b>${esc(o[0])}</b></td><td>${esc(o[1])}</td><td class="n">${esc(o[2])}</td><td class="n">${esc(o[3])}</td></tr>`).join("")}</tbody></table></div></section>`;
+}
+
+/* ---- saved pilot / drone profile (this device only) ---- */
+const PROFILE_KEYS=["pilot","cert","certDate","trnDate","model","reg","regExp","ridType","ridId"];
+const PROFILE_STORE="skyclear.profile.v1";
+function loadProfile(){try{const o=JSON.parse(localStorage.getItem(PROFILE_STORE)||"{}");PROFILE_KEYS.forEach(k=>{if(typeof o[k]==="string")S[k]=o[k]})}catch(e){}}
+function saveProfile(){try{const o={};PROFILE_KEYS.forEach(k=>o[k]=S[k]||"");if(PROFILE_KEYS.some(k=>o[k]))localStorage.setItem(PROFILE_STORE,JSON.stringify(o));else localStorage.removeItem(PROFILE_STORE)}catch(e){}}
+function hasProfile(){return PROFILE_KEYS.some(k=>S[k])}
+function clearProfile(){if(!confirm("Clear the saved pilot, drone and Remote ID details from this device?"))return;PROFILE_KEYS.forEach(k=>S[k]="");try{localStorage.removeItem(PROFILE_STORE)}catch(e){}render()}
+
+/* ---- LAANC tab ---- */
+// Contact details checked 2026-11-25 on each company's own website. Only list what the company publishes.
+const LAANC_APPS=[
+ {name:"Aloft Air Control",by:"Aloft (a Versaterm company)",cost:"Free for individual pilots",
+  web:["air.aloft.ai","https://air.aloft.ai"],site:["aloft.ai","https://www.aloft.ai"],help:["Aloft help center","https://www.aloft.ai/help-category/air-control-for-individual-pilots"],
+  email:"support@aloft.ai",phone:null,phoneNote:"Aloft does not publish a support phone number. Use email or the Get Support button in its help center.",
+  apps:"iPhone and Android: search \"Aloft Air Control\" in the App Store or Google Play.",
+  steps:["Install Aloft Air Control and create a free account.","Open your profile and add your phone number. Part 107 pilots also add their certificate number.","Search for your launch location, or use your current position on the map.","Draw the flight area and set the maximum altitude. Stay at or below the grid number (SkyClear shows it as Fly up to).","Choose the date, start time and how long you will fly, then submit the LAANC request.","Approval inside the grid usually comes back within seconds. Copy the authorization number shown on the approved request."]},
+ {name:"AirHub Portal",by:"Airspace Link",cost:"Free Personal plan (includes LAANC)",
+  web:["portal.airspacelink.com","https://portal.airspacelink.com"],site:["airspacelink.com","https://airspacelink.com"],help:["Airspace Link support","https://support.airspacelink.com"],
+  email:"helpdesk@airspacelink.com",phone:"(800) 783-3712",phoneNote:"Main company line from the Airspace Link contact page. For app help, the helpdesk email or support case form is the official route.",
+  extra:["Submit a support case","https://airspacelink.com/create-support-case"],
+  apps:"iPhone and Android: \"AirHub Portal\" by Airspace Link. Check the publisher name; a look-alike app is not theirs.",
+  steps:["Install AirHub Portal or open portal.airspacelink.com and create a free Personal account.","Add your phone number to your profile. It is required for LAANC.","Tap (+) then Operation, or drop a pin on your launch spot and tap Get Approval.","Give it a title, draw a circle or box around the flight area and enter the Max Altitude in feet AGL (at or below the grid number).","Set the start time, duration and time zone, then pick yourself as Pilot in Command and choose the aircraft.","In the Compliance section, submit the LAANC authorization. Copy the authorization number once it is approved."]}
+];
+function laancNow(loading,controlled,cap0,gridOk,ge0){
+  const pe=$("#laancprof");
+  if(pe){const rid={std:"Standard Remote ID (built in)",mod:"Broadcast module attached",fria:"Flying inside an FRIA"}[S.ridType]||"";
+    const r=(l,v)=>`<tr><th>${l}</th><td class="n">${v?esc(v):`<span class="muted">not entered</span>`}</td></tr>`;
+    pe.innerHTML=`<table class="tb kv"><tbody>${r("Pilot",S.pilot)}${r("Part 107 cert",S.cert)}${r("Aircraft",S.model)}${r("FAA registration",S.reg)}${r("Remote ID",rid+(S.ridId?(rid?" · ":"")+S.ridId:""))}</tbody></table><p class="note">${hasProfile()?"Saved on this device. Edit it on the Pre-flight tab.":"Fill this in once on the Pre-flight tab (Pilot, drone and Remote ID). It is saved on this device."} Aloft and AirHub ask for the same details when you set up your profile and aircraft.</p>`}
+  const e=$("#laancnow");if(!e)return;
+  const L=S.loc,pos=L.lat.toFixed(5)+", "+L.lon.toFixed(5);
+  e.innerHTML=loading?`<p class="muted">Checking airspace…</p>`:controlled
+   ?`<div class="lnow need"><b>LAANC needed here</b><span>${esc(pos)} · ${esc(L.label||"")}</span><span>Ask for <b>${gridOk?cap0+" ft AGL or lower":"the altitude in your LAANC app (grid not confirmed here)"}</b>${ge0.ft!=null&&gridOk?" ("+(ge0.ft+cap0)+" ft MSL)":""}. Use these coordinates in the LAANC app.</span></div>`
+   :`<div class="lnow ok"><b>No LAANC needed here</b><span>${esc(pos)} · ${esc(L.label||"")}</span><span>The FAA layer does not show controlled airspace at the surface here. Still check TFRs before flying.</span></div>`;
+}
+function laancHTML(){
+  const a=t=>`<a href="${t[1]}" target="_blank" rel="noopener">${esc(t[0])}</a>`;
+  const card=x=>`<section class="grp"><h2>${esc(x.name)}<small>${esc(x.by)}</small></h2><div class="req">
+   <table class="tb kv"><tbody>
+    <tr><th>Cost</th><td>${esc(x.cost)}</td></tr>
+    <tr><th>Web app</th><td>${a(x.web)}</td></tr>
+    <tr><th>Phone apps</th><td>${esc(x.apps)}</td></tr>
+    <tr><th>Support email</th><td class="n"><a href="mailto:${x.email}">${esc(x.email)}</a></td></tr>
+    <tr><th>Phone</th><td>${x.phone?`<a class="n" href="tel:+1${x.phone.replace(/\D/g,"")}">${esc(x.phone)}</a><small>${esc(x.phoneNote)}</small>`:`<span class="muted">Not published</span><small>${esc(x.phoneNote)}</small>`}</td></tr>
+    <tr><th>Help</th><td>${a(x.help)}${x.extra?" · "+a(x.extra):""} · ${a(x.site)}</td></tr>
+   </tbody></table>
+   <h3>How to request</h3><ol class="steps">${x.steps.map(s=>`<li>${esc(s)}</li>`).join("")}</ol></div></section>`;
+  return `<div class="reqhead"><h1>LAANC</h1><p>LAANC is the FAA's automatic approval for flying in controlled airspace near airports. You don't call anyone: you ask through an FAA-approved app, and at or below the grid altitude the answer usually comes back in seconds.</p></div>
+  <section class="grp"><h2>Your spot right now<small>from the Pre-flight scan</small></h2><div class="req" id="laancnow"></div></section>
+  <section class="grp"><h2>Your pilot and drone info<small>for the LAANC app</small></h2><div class="req" id="laancprof"></div></section>
+  <section class="grp"><h2>Authorization number<small>after approval</small></h2><div class="fields"><div><label for="laanc2">LAANC authorization number</label><input id="laanc2" autocomplete="off" placeholder="Paste it here after approval" value="${esc(S.laanc)}"></div></div><p class="muted lsmall">Same field as on the Pre-flight tab. Once entered, the Airspace check passes and the number goes on your pre-flight record.</p></section>
+  ${LAANC_APPS.map(card).join("")}
+  <section class="grp"><h2>Good to know</h2><div class="req"><ul>
+   <li><b>Part 107 or recreational:</b> both can use LAANC. Recreational flyers need their TRUST certificate and pick recreational in the app.</li>
+   <li><b>Altitude:</b> ask at or below the grid number for fast approval. Above the grid is "further coordination": a manual FAA review that should be filed days ahead and can take a long time or be declined.</li>
+   <li><b>Fly what was approved:</b> stay inside the area, altitude and time window on the authorization.</li>
+   <li><b>Not covered by LAANC:</b> TFRs and NOTAMs. Check tfr.faa.gov and the TFRs shown in your LAANC app.</li>
+   <li><b>No LAANC grid at a spot:</b> requests there go through the FAA DroneZone instead.</li>
+  </ul><p class="note">Contact details were checked on each company's website on Nov 25, 2026. SkyClear is not affiliated with Aloft or Airspace Link.</p></div></section>`;
+}
+
+/* ---- wiring ---- */
+$("#preset").innerHTML=PRESETS.map(x=>`<option value="${x.k}">${x.name}</option>`).join("");
+$("#preset").onchange=e=>{const x=PRESETS.find(z=>z.k===e.target.value);setLoc(x.lat,x.lon,"preset",x.name,{presetElev:x.elev})};
+$("#gps").onclick=useGps;
+$("#go").onclick=()=>{const la=parseFloat($("#lat").value),lo=parseFloat($("#lon").value);if(!isFinite(la)||!isFinite(lo)||Math.abs(la)>90||Math.abs(lo)>180){$("#gpsmsg").textContent="Enter latitude and longitude as decimal degrees, for example 33.9164 and -118.3526.";return}$("#gpsmsg").textContent="";setLoc(la,lo,"manual","Manual position")};
+document.addEventListener("click",e=>{
+  const r=e.target.closest("[data-r]");if(r){S.radius=+r.dataset.r;render();mapUpdate(true);return}
+  const w=e.target.closest("[data-w]");if(w){S.wxSel=+w.dataset.w;render();return}
+  if(e.target.closest("#wxrefresh")){loadAll();return}
+  if(e.target.closest("#profclear")){clearProfile();return}
+});
+document.addEventListener("change",e=>{if(e.target.matches("input[data-id]")){S.manual[e.target.dataset.id]=e.target.checked;render()}});
+document.addEventListener("input",e=>{if(e.target.id==="laanc2"){S.laanc=e.target.value;render();return}if(e.target.id==="laanc"){const o=$("#laanc2");if(o)o.value=e.target.value}const id=e.target.id;if(PROFILE_KEYS.includes(id)){S[id]=e.target.value;saveProfile()}if(["laanc","pilot","cert","certDate","trnDate","model","reg","regExp","ridType","ridId"].includes(id)){S[id]=e.target.value;render()}});
+$("#lat").value=S.loc.lat.toFixed(5);$("#lon").value=S.loc.lon.toFixed(5);
+loadProfile();
+$("#view-req").innerHTML=reqHTML();
+$("#view-laanc").innerHTML=laancHTML();
+mapInit();showTab();
+$("#gpsmsg").textContent=DEV_FIXED_LOCATION?"Showing "+PRESETS[0].name+". Press Use my GPS, tap the map, or type coordinates.":"";
+loadAll();
+if(!DEV_FIXED_LOCATION)useGps(true);
+// Installable app: register the service worker (it never caches /api weather).
+if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("/sw.js").catch(()=>{});
+
+</script>
+</body>
+</html>
