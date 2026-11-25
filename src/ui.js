@@ -84,6 +84,7 @@ function buildChecks(D){
   const L=S.loc,now=new Date();
   // location
   if(L.src==="gps"){const s=L.acc<=15?"pass":L.acc<=50?"caution":"fail";add("Location","gps","GPS position",s,L.lat.toFixed(4)+", "+L.lon.toFixed(4)+"  ±"+Math.round(L.acc)+" m",s==="pass"?"Accuracy is good enough to place you in the right airspace cell.":"Accuracy is weak. Move to open sky and refresh.","Device GPS")}
+  else if(L.src==="address")add("Location","gps","Position","caution",L.lat.toFixed(4)+", "+L.lon.toFixed(4),"Looked up from an address: "+(L.label||"")+". An address point can be off by a building or more, so check the pin on the map, and use the GPS button at the launch point.","Address lookup · "+(L.geoSrc||""));
   else add("Location","gps","Position","caution",L.lat.toFixed(4)+", "+L.lon.toFixed(4),"Entered by hand or picked from a preset, not read from a GPS. Use the GPS button when you are at the launch point.","Manual entry");
   const cd=new Date(CHART.to+"T23:59:59"),cf=new Date(CHART.from+"T00:00:00");
   const okc=now>=cf&&now<=cd;
@@ -170,7 +171,7 @@ function wherePanel(D){
   const L=S.loc,ge=groundElev(),s=D.sun,n=D.list[0];
   const kv=(k,v)=>`<div class="kv"><span>${k}</span><b>${v}</b></div>`;
   const place=S.place.text||(n.id+" "+fmt1(n.dist)+" mi "+compass(bearing(n.lat,n.lon,L.lat,L.lon))+" of the airport");
-  return `<section class="grp"><h2>Where you are standing<small>${L.src==="gps"?"GPS fix":L.src==="preset"?"preset location":"manual position"}</small></h2>
+  return `<section class="grp"><h2>Where you are standing<small>${L.src==="gps"?"GPS fix":L.src==="preset"?"preset location":L.src==="address"?"address lookup":"manual position"}</small></h2>
   <div class="kvs">
    ${kv("Position",L.lat.toFixed(5)+", "+L.lon.toFixed(5))}
    ${kv("Degrees",dms(L.lat,"N","S")+"<br>"+dms(L.lon,"E","W"))}
@@ -343,7 +344,8 @@ async function loadAll(){
   })());
   await Promise.all(jobs);
 }
-function setLoc(lat,lon,src,label,extra){S.loc=Object.assign({lat,lon,acc:null,alt:null,src,label,presetElev:null},extra||{});$("#lat").value=lat.toFixed(5);$("#lon").value=lon.toFixed(5);S.wxSel=0;loadAll()}
+function syncPreset(){const sel=$("#preset");if(!sel)return;const x=S.loc.src==="preset"&&PRESETS.find(z=>z.name===S.loc.label);sel.value=x?x.k:"";}
+function setLoc(lat,lon,src,label,extra){S.loc=Object.assign({lat,lon,acc:null,alt:null,src,label,presetElev:null},extra||{});$("#lat").value=lat.toFixed(5);$("#lon").value=lon.toFixed(5);S.wxSel=0;syncPreset();loadAll()}
 function useGps(auto){
   const st=$("#gpsmsg");
   if(!navigator.geolocation){st.textContent="This browser has no GPS access. Pick a preset or type coordinates.";return}
@@ -402,7 +404,7 @@ function showTab(){
   const h=(location.hash||"").replace("#",""),t=h==="requirements"?"req":h==="laanc"?"laanc":"pre";
   $("#view-pre").hidden=t!=="pre";$("#view-req").hidden=t!=="req";$("#view-laanc").hidden=t!=="laanc";
   document.querySelectorAll("[data-tab]").forEach(b=>b.setAttribute("aria-current",b.dataset.tab===t?"page":"false"));
-  $(".locbar").style.display=t==="pre"?"":"none";$("#gpsmsg").style.display=t==="pre"?"":"none";
+  $(".locbar").style.display=t==="pre"?"":"none";$("#gpsmsg").style.display=t==="pre"?"":"none";$("#addrlist").style.display=t==="pre"?"":"none";
   if(t==="pre")mapSize();
   window.scrollTo(0,0);
 }
@@ -417,7 +419,7 @@ function reqHTML(){
   ${card("Drone registration and Remote ID",`<p>The drone is registered on the FAA DroneZone site, and the Remote ID rules apply. The registration number goes on the outside of the aircraft, and the aircraft broadcasts Remote ID (built in, with an attached module, or inside an FRIA).</p><p class="note">In this app: registration number and expiry, the Remote ID method and ID, and a broadcast check.</p>`)}
   ${card("Airspace authorization",`<p>In controlled airspace (Class B, C, D or E surface areas) the pilot gets approval through LAANC. LAANC is built into approved apps and is also available through DroneZone. Much of the LA basin is controlled airspace near LAX, Hawthorne and Torrance, so this comes up often.</p><p class="note">In this app: the airspace checks tell you when authorization is needed, and the record keeps the LAANC number.</p>`)}
   ${card("Waivers",`<p>Night flights are allowed with the right training and lighting. Flying over people, beyond line of sight, or multiple aircraft at once may need a waiver or specific compliance. Those requests go through DroneZone, not a FSDO.</p>`)}
-  ${card("Data sources",`<ul><li><b>Airspace, towers and frequencies:</b> ${esc(CHART.name)}, effective ${esc(CHART.from)} to ${esc(CHART.to)}. The sectional you uploaded is the map layer.</li><li><b>METAR and TAF:</b> aviationweather.gov data API. It is free with no key, limited to 100 requests a minute, and it does not allow calls straight from a web page, so the live app needs a small server-side proxy. Until then the weather shows labeled sample text.</li><li><b>Ground elevation:</b> USGS elevation service. <b>Place name:</b> National Weather Service.</li><li><b>Not yet read by this app:</b> TFRs, NOTAMs and special use airspace. Check tfr.faa.gov and the FAA B4UFLY map.</li></ul>`)}
+  ${card("Data sources",`<ul><li><b>Airspace, towers and frequencies:</b> ${esc(CHART.name)}, effective ${esc(CHART.from)} to ${esc(CHART.to)}. The sectional you uploaded is the map layer.</li><li><b>METAR and TAF:</b> aviationweather.gov data API. It is free with no key, limited to 100 requests a minute, and it does not allow calls straight from a web page, so the live app needs a small server-side proxy. Until then the weather shows labeled sample text.</li><li><b>Ground elevation:</b> USGS elevation service. <b>Place name:</b> National Weather Service.</li><li><b>Address search:</b> OpenStreetMap (Nominatim, © OpenStreetMap contributors), then the US Census Bureau geocoder if OpenStreetMap finds nothing. The address you type is sent to them through SkyClear's server to look it up and is not stored by SkyClear.</li><li><b>Not yet read by this app:</b> TFRs, NOTAMs and special use airspace. Check tfr.faa.gov and the FAA B4UFLY map.</li></ul>`)}
   <section class="grp"><h2>FAA offices, Southern California<small>reference only</small></h2><p class="pad muted" style="padding-bottom:0">Flight Standards District Offices. A drone pilot does not check in with them for a flight. They are listed here so you have the contact details.</p><div class="scroll"><table class="tb"><thead><tr><th>Office</th><th>Address</th><th>Phone</th><th>Fax</th></tr></thead><tbody>${offices.map(o=>`<tr><td><b>${esc(o[0])}</b></td><td>${esc(o[1])}</td><td class="n">${esc(o[2])}</td><td class="n">${esc(o[3])}</td></tr>`).join("")}</tbody></table></div></section>`;
 }
 
@@ -482,9 +484,31 @@ function laancHTML(){
 }
 
 /* ---- wiring ---- */
-$("#preset").innerHTML=PRESETS.map(x=>`<option value="${x.k}">${x.name}</option>`).join("");
-$("#preset").onchange=e=>{const x=PRESETS.find(z=>z.k===e.target.value);setLoc(x.lat,x.lon,"preset",x.name,{presetElev:x.elev})};
+$("#preset").innerHTML=`<option value="" disabled>Custom location</option>`+PRESETS.map(x=>`<option value="${x.k}">${x.name}</option>`).join("");
+$("#preset").onchange=e=>{const x=PRESETS.find(z=>z.k===e.target.value);if(!x)return;setLoc(x.lat,x.lon,"preset",x.name,{presetElev:x.elev})};
 $("#gps").onclick=useGps;
+/* ---- address lookup (via /api/geo: OpenStreetMap, then US Census) ---- */
+function pickAddr(r){$("#addrlist").hidden=true;$("#addrlist").innerHTML="";setLoc(r.lat,r.lon,"address",r.label,{geoSrc:r.src});
+  $("#gpsmsg").textContent="Found: "+r.label+" · "+(r.src==="OpenStreetMap"?"© OpenStreetMap contributors":"US Census Bureau")+". Check the pin on the map.";}
+async function findAddr(){
+  const q=$("#addr").value.trim(),msg=$("#gpsmsg"),list=$("#addrlist"),btn=$("#find");
+  list.hidden=true;list.innerHTML="";
+  if(q.length<3){msg.textContent="Type a street address, city, or place name, then press Find.";return}
+  btn.disabled=true;msg.textContent="Looking up the address…";
+  try{
+    const j=await fetchJson("/api/geo?q="+encodeURIComponent(q),12000);
+    const rs=(j&&j.results)||[];
+    if(!rs.length){msg.textContent="No match in the United States. Add the city and state, or use GPS or coordinates.";return}
+    if(rs.length===1){pickAddr(rs[0]);return}
+    window.__addr=rs;msg.textContent="Several matches. Pick the right one:";
+    list.innerHTML=rs.map((r,i)=>`<button type="button" data-ai="${i}">${esc(r.label)}<small>${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} · ${r.src==="OpenStreetMap"?"© OpenStreetMap contributors":"US Census Bureau"}</small></button>`).join("");
+    list.hidden=false;
+  }catch(e){msg.textContent="Address search is unavailable right now. Use GPS, a preset, or type coordinates."}
+  finally{btn.disabled=false}
+}
+$("#find").onclick=findAddr;
+$("#addr").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();findAddr()}});
+document.addEventListener("click",e=>{const b=e.target.closest("[data-ai]");if(b&&window.__addr){pickAddr(window.__addr[+b.dataset.ai])}});
 $("#go").onclick=()=>{const la=parseFloat($("#lat").value),lo=parseFloat($("#lon").value);if(!isFinite(la)||!isFinite(lo)||Math.abs(la)>90||Math.abs(lo)>180){$("#gpsmsg").textContent="Enter latitude and longitude as decimal degrees, for example 33.9164 and -118.3526.";return}$("#gpsmsg").textContent="";setLoc(la,lo,"manual","Manual position")};
 document.addEventListener("click",e=>{
   const r=e.target.closest("[data-r]");if(r){S.radius=+r.dataset.r;render();mapUpdate(true);return}

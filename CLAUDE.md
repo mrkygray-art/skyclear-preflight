@@ -12,6 +12,7 @@ Drone pilot pre-flight clearance web app for Ky (Part 107 student, Southern Cali
 ## Layout
 - `index.html`: BUILT file. Do not hand-edit; edit `src/` then run `python3 src/build.py`.
 - `src/core.js` data and logic (airports, decoders, sun times); `src/ui.js` UI, map, loading; `src/template.html` shell and CSS.
+- `api/geo.js`: address lookup relay (added 2026-11-25). OpenStreetMap Nominatim first (US only, limit 5, generic app User-Agent, no keys; usage policy = low volume, cache, show "© OpenStreetMap contributors"), then the US Census geocoder. Merges matches within ~200 m. In the UI: `#addr` + `#find` in the location bar, `#addrlist` for several matches, `setLoc(...,"address",label,{geoSrc})`; the Position check stays a caution for address lookups. The Census geocoder misplaced "200 N Spring St" onto S Spring St in testing, which is why OpenStreetMap goes first.
 - `api/wx.js`: relay to NOAA aviationweather.gov (browsers cannot call it directly: no CORS). Only `metar` and `taf` allowed; app calls `/api/wx?path=...`.
 - `s/` San Francisco sectional tiles, `d/` San Diego TAC tiles (`{z}/{x}/{y}.webp`, 512px, Leaflet `zoomOffset:-1`), `chart-basin.jpg` LA basin overlay. Charts were georeferenced from FAA PDFs Ky supplied; do not regenerate.
 - `leaflet.js`/`leaflet.css`: Leaflet 1.9.4, local copies.

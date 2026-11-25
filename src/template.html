@@ -42,6 +42,12 @@ header{border-bottom:1px solid var(--line);background:#0b141c}
 .locbar label{display:block;font-size:11px;color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}
 .locbar input,.locbar select{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:8px 10px;font-family:var(--mono);font-size:14px}
 .locbar input{width:128px}
+.locbar .addrf input{width:300px;max-width:calc(100vw - 120px)}
+#addrlist{display:grid;gap:6px;padding:4px 0 10px;max-width:760px}
+#addrlist p{margin:0;color:var(--muted);font-size:13px}
+#addrlist button{text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 12px;cursor:pointer;color:var(--ink);font-size:14px}
+#addrlist button:hover{border-color:var(--accent)}
+#addrlist small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
 .locbar button{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:9px 14px;cursor:pointer;font-weight:600}
 .locbar button.pri{background:var(--accent);border-color:var(--accent);color:#04202f}
 .locbar button:hover{filter:brightness(1.12)}
@@ -204,12 +210,15 @@ table.bd{width:calc(100% - 32px);margin:2px 16px 4px;border-collapse:collapse;fo
     <div class="top"><div class="brand">Sky<span>Clear</span> <span style="color:var(--muted);font-weight:600;font-size:18px">Pre-Flight · SoCal</span></div><span class="badge" id="badge">Loading</span><nav class="tabs" aria-label="Sections"><button data-tab="pre" aria-current="page">Pre-flight</button><button data-tab="laanc" aria-current="false">LAANC</button><button data-tab="req" aria-current="false">Requirements</button></nav></div>
     <div class="locbar">
       <button class="pri" id="gps">Use my GPS</button>
+      <div class="addrf"><label for="addr">Address or place</label><input id="addr" type="search" autocomplete="street-address" placeholder="Street address, city, or a place name" enterkeyhint="search"></div>
+      <button id="find">Find</button>
       <div><label for="preset">Preset</label><select id="preset"></select></div>
       <div><label for="lat">Latitude</label><input id="lat" inputmode="decimal"></div>
       <div><label for="lon">Longitude</label><input id="lon" inputmode="decimal"></div>
       <button id="go">Go</button>
     </div>
     <div id="gpsmsg" role="status"></div>
+    <div id="addrlist" hidden></div>
   </div>
 </header>
 <div class="wrap">
