@@ -16,7 +16,7 @@ Built while studying for the FAA Part 107 remote pilot exam, to answer one quest
 2. **Check the airspace.** The FAA's own airspace layer says whether controlled airspace (Class B, C, D or E) reaches the ground there, and the FAA UAS Facility Map gives the LAANC grid ceiling. The result is shown as *Fly up to ___ ft AGL*, the same number in feet MSL, and whether LAANC authorization is needed.
 3. **Read the weather.** Live METAR and TAF from aviationweather.gov for the 3 nearest reporting stations, decoded element by element (wind, visibility, clouds, temperature) and checked against the Part 107 weather minimums.
 4. **Run the checklist.** 18 pilot confirmations: certificate and recurrent training, registration and Remote ID, aircraft, TFRs, NOTAMs, people, line of sight.
-5. **Get a call and a record.** GO, HOLD (for example, LAANC still needed) or NO-GO (a blocking condition, like weak GPS), plus a pre-flight record card with a SHA-256 fingerprint and a "Copy record text" button. The record is valid for 60 minutes.
+5. **Get a call and a record.** GO, HOLD (for example, LAANC still needed) or NO-GO (a blocking condition, like a GPS fix more than 5 minutes old), plus a pre-flight record card with a SHA-256 fingerprint and a "Copy record text" button. The record is valid for 60 minutes.
 
 | LAANC tab | Weather, decoded | On a phone |
 |---|---|---|
@@ -32,6 +32,7 @@ Built while studying for the FAA Part 107 remote pilot exam, to answer one quest
 
 - **The FAA is the source of truth.** Airspace, frequencies and altitudes come from FAA charts and FAA data layers. Nothing is invented: when a value isn't known, the app says *not confirmed*.
 - **Weather is live or clearly labeled.** If the weather relay fails, the app shows labeled SAMPLE text and never presents it as live. The offline cache never stores weather.
+- **GPS accuracy is checked, not just trusted.** The FAA airspace and LAANC grid layers are queried inside the GPS accuracy circle. If a different airspace or ceiling lies inside it, or the fix is rough (worse than ±50 m, like a computer's Wi-Fi location), the position is amber, the lower ceiling is used, and the app asks for a confirmed pin on the launch spot. Weak accuracy alone never blocks; only a missing fix or one older than 5 minutes is NO-GO.
 - **An address is a starting point, not a GPS fix.** A looked-up position is marked as an address lookup with a caution, and the app asks for GPS at the launch point.
 - **Pilot details stay on the device.** Name, certificate, drone and Remote ID are saved in the browser on that phone or computer only (with a Clear button). Nothing is sent to a server, and there are no accounts or analytics.
 

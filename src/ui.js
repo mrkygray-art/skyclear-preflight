@@ -79,11 +79,35 @@ function groundElev(){
 }
 
 /* ---- checks ---- */
+/* GPS rule (roadmap 1). Weak accuracy alone never blocks:
+   - fail: no usable fix, or the fix is older than GPS_MAX_AGE
+   - caution: accuracy worse than GPS_GOOD_M (likely Wi-Fi/network location), or the accuracy circle
+     crosses an approximate ring edge, an FAA airspace boundary or a LAANC grid cell edge,
+     or the FAA boundary check could not run
+   - pass: a close fix whose accuracy circle stays inside one airspace and one grid ceiling */
+const GPS_GOOD_M=50,GPS_MAX_AGE=5*60000;
+function ringEdges(D,acc){const out=[];D.list.forEach(a=>{const r=a.cls==="B"?6:a.cls==="C"?RING.C:a.cls==="D"?RING.D:null;if(r==null)return;const m=Math.abs(a.nm-r)*NM*1609.344;if(m<=acc)out.push(a.id+" ring edge "+Math.round(m)+" m away")});return out}
+function gpsCheck(D){
+  const L=S.loc,acc=L.acc;
+  if(acc==null||!isFinite(acc)||!isFinite(L.lat)||!isFinite(L.lon))return {s:"fail",d:"No usable GPS fix. Press Use my GPS again, drop a pin, or type coordinates."};
+  const age=L.fixAt?Date.now()-L.fixAt:0;
+  if(age>GPS_MAX_AGE)return {s:"fail",d:"This GPS fix is "+Math.round(age/60000)+" min old. Press Use my GPS again at the launch point."};
+  const hint=" Approximate location. Drop a pin on your launch spot.";
+  const why=ringEdges(D,acc),E=S.faa.edge;
+  if(E&&E.checked){if(E.air)why.push("an FAA airspace boundary ("+E.air+")");if(E.grid)why.push("a LAANC grid edge (ceilings "+E.ceilings.join(" / ")+" ft within your accuracy)")}
+  if(why.length)return {s:"caution",d:"Your ±"+Math.round(acc)+" m accuracy circle crosses "+why.join("; ")+". You could be on either side."+hint,src:"FAA layers"+(E&&E.checked?" · checked within ±"+Math.round(acc)+" m":"")};
+  if(acc>GPS_GOOD_M)return {s:"caution",d:"Accuracy ±"+Math.round(acc)+" m is typical of a computer or indoor phone (Wi-Fi or network location)."+hint};
+  if(!E||!E.checked)return {s:"caution",d:S.faa.state==="live"?"The FAA boundary check within your accuracy did not run. Drop a pin to confirm the launch spot.":"Checking FAA airspace near your position…"};
+  return {s:"pass",d:"Your ±"+Math.round(acc)+" m accuracy circle stays inside one airspace and one LAANC grid ceiling."};
+}
+// The LAANC grid ceiling to fly by: the point value, or the lowest cell inside a GPS accuracy circle that crosses a grid edge.
+function effGrid(){const g=S.faa.grid,E=S.faa.edge;if(S.loc.src==="gps"&&E&&E.checked&&E.grid&&E.gridMin!=null)return g==null?E.gridMin:Math.min(g,E.gridMin);return g}
 function buildChecks(D){
   const C=[];const add=(group,id,label,status,value,detail,src)=>C.push({group,id,label,status,value,detail:detail||"",src:src||""});
   const L=S.loc,now=new Date();
   // location
-  if(L.src==="gps"){const s=L.acc<=15?"pass":L.acc<=50?"caution":"fail";add("Location","gps","GPS position",s,L.lat.toFixed(4)+", "+L.lon.toFixed(4)+"  ±"+Math.round(L.acc)+" m",s==="pass"?"Accuracy is good enough to place you in the right airspace cell.":"Accuracy is weak. Move to open sky and refresh.","Device GPS")}
+  if(L.src==="gps"){const g=gpsCheck(D);add("Location","gps","GPS position",g.s,L.lat.toFixed(4)+", "+L.lon.toFixed(4)+"  ±"+Math.round(L.acc)+" m",g.d,"Device GPS"+(g.src?" · "+g.src:""))}
+  else if(L.pin)add("Location","gps","Position",L.pinOk?"pass":"caution",L.lat.toFixed(4)+", "+L.lon.toFixed(4)+(L.pinOk?"  pin confirmed":"  pin not confirmed"),L.pinOk?"You confirmed this pin is your launch spot.":"Check the pin is exactly on your launch spot, then press Confirm pin under the map.","Dropped pin");
   else if(L.src==="address")add("Location","gps","Position","caution",L.lat.toFixed(4)+", "+L.lon.toFixed(4),"Looked up from an address: "+(L.label||"")+". An address point can be off by a building or more, so check the pin on the map, and use the GPS button at the launch point.","Address lookup · "+(L.geoSrc||""));
   else add("Location","gps","Position","caution",L.lat.toFixed(4)+", "+L.lon.toFixed(4),"Entered by hand or picked from a preset, not read from a GPS. Use the GPS button when you are at the launch point.","Manual entry");
   const cd=new Date(CHART.to+"T23:59:59"),cf=new Date(CHART.from+"T00:00:00");
@@ -105,16 +129,16 @@ function buildChecks(D){
   if(controlled){
     const have=S.laanc.trim().length>=6;
     add("Airspace","laanc","Authorization (LAANC)",have?"pass":"hold",have?"Auth "+S.laanc.trim().toUpperCase():"Needed before launch",
-      (S.faa.grid!=null?"Facility-map grid ceiling here: "+S.faa.grid+" ft AGL. ":"Look up the grid ceiling in your LAANC app. ")+"Request authorization, then enter the number below.","FAA UAS Facility Map / LAANC");
+      (effGrid()!=null?"Facility-map grid ceiling here: "+effGrid()+" ft AGL. ":"Look up the grid ceiling in your LAANC app. ")+"Request authorization, then enter the number below.","FAA UAS Facility Map / LAANC");
   }
   const near=D.list.filter(a=>a.dist<=3);
   add("Airspace","apt","Airports within 3 mi",near.length&&!controlled?"caution":"pass",near.length?near.map(a=>a.id+" "+fmt1(a.dist)+" mi").join(" · "):"None",near.length?"Manned aircraft may be low and close. "+(controlled?"Your authorization covers the controlled airspace, not the traffic.":"Consider calling the airport operator."):"No charted airports inside the 3 mi ring.","Chart airport list");
   // altitude
-  const ge=groundElev();const cap=S.faa.grid!=null?Math.min(400,S.faa.grid):400;
+  const ge=groundElev();const gridUse=effGrid();const cap=gridUse!=null?Math.min(400,gridUse):400;
   add("Altitude","elev","Ground elevation (MSL)",ge.ft==null?"caution":"pass",ge.ft==null?"Not available":ge.ft+" ft MSL",
     (S.loc.alt!=null&&ge.ft!=null?"Device GPS reports "+Math.round(S.loc.alt*3.281)+" ft. ":"")+"AGL is height above the ground at your feet. MSL is height above sea level.",ge.src);
-  const gridUnknown=controlled&&S.faa.grid==null;
-  add("Altitude","ceil","Maximum legal altitude",gridUnknown?"caution":"pass",cap+" ft AGL"+(ge.ft!=null?" = "+(ge.ft+cap)+" ft MSL":"")+(gridUnknown?" (not confirmed)":""),gridUnknown?"This is the standard limit only. In controlled airspace the LAANC grid ceiling can be lower, and the FAA grid data did not load here. Use the ceiling in your LAANC approval.":S.faa.grid!=null&&S.faa.grid<400?"Limited by the LAANC grid.":"Standard 400 ft AGL limit, or within 400 ft of a structure.","14 CFR 107.51");
+  const gridUnknown=controlled&&gridUse==null;
+  add("Altitude","ceil","Maximum legal altitude",gridUnknown?"caution":"pass",cap+" ft AGL"+(ge.ft!=null?" = "+(ge.ft+cap)+" ft MSL":"")+(gridUnknown?" (not confirmed)":""),gridUnknown?"This is the standard limit only. In controlled airspace the LAANC grid ceiling can be lower, and the FAA grid data did not load here. Use the ceiling in your LAANC approval.":gridUse!==S.faa.grid?"Limited by the lowest LAANC grid cell inside your GPS accuracy circle ("+(S.faa.grid==null?"no grid value":S.faa.grid+" ft")+" at the exact point). Drop and confirm a pin to use the exact cell.":gridUse!=null&&gridUse<400?"Limited by the LAANC grid.":"Standard 400 ft AGL limit, or within 400 ft of a structure.","14 CFR 107.51");
   // weather
   const W=currentWx(D);
   if(W&&W.m){
@@ -154,7 +178,7 @@ function overall(C){
 
 /* ---- graphics ---- */
 function altViz(){
-  const ge=groundElev(),cap=S.faa.grid!=null?Math.min(400,S.faa.grid):400,k=70/400,gy=104,top=gy-400*k,cy=gy-cap*k;
+  const ge=groundElev(),eg=effGrid(),cap=eg!=null?Math.min(400,eg):400,k=70/400,gy=104,top=gy-400*k,cy=gy-cap*k;
   return `<svg viewBox="0 0 300 130" role="img" aria-label="Altitude diagram"><rect x="0" y="${gy}" width="300" height="26" fill="#27405a"/>
   <text x="8" y="${gy+17}" font-size="11" fill="#e8f0f7" font-family="IBM Plex Mono,monospace">Ground ${ge.ft==null?"?":ge.ft} ft MSL</text>
   <line x1="0" y1="${top}" x2="300" y2="${top}" stroke="#8fa6ba" stroke-dasharray="4 4"/><text x="8" y="${top-4}" font-size="10" fill="#8fa6ba" font-family="IBM Plex Mono,monospace">400 ft AGL standard limit</text>
@@ -223,7 +247,7 @@ let LAST={};
 function render(){
   const D=derived();const {C,controlled}=buildChecks(D);const ov=overall(C);LAST={D,C,ov,controlled};
   const loading=S.wx.mode==="loading";
-  const ge0=groundElev(),gridOk=S.faa.grid!=null,cap0=gridOk?Math.min(400,S.faa.grid):400,unk=controlled&&!gridOk;
+  const ge0=groundElev(),g0=effGrid(),gridOk=g0!=null,cap0=gridOk?Math.min(400,g0):400,unk=controlled&&!gridOk;
   const altl=`<div class="altline"><div><span>Fly up to</span><b>${cap0} ft AGL</b></div><div><span>Equals</span><b>${ge0.ft==null?"? ft MSL":(ge0.ft+cap0)+" ft MSL"}</b></div><div><span>Ground here</span><b>${ge0.ft==null?"?":ge0.ft} ft MSL</b></div><div class="authl ${controlled?"need":"none"}"><span>Authorization</span><b>${controlled?(S.laanc?"LAANC "+esc(S.laanc.toUpperCase()):"LAANC needed"):"None needed"}</b></div></div>${unk?`<p class="altwarn">Ceiling not confirmed. In controlled airspace the LAANC grid can be lower than 400 ft. Use the altitude in your LAANC approval.</p>`:""}`;
   laancNow(loading,controlled,cap0,gridOk,ge0);
   $("#banner").innerHTML=loading?`<div class="banner b-info"><div class="big">Scanning…</div><p>Reading position, airspace and weather.</p></div>`:`<div class="banner b-${ov.k}"><div class="big">${ov.t}</div><p>${esc(ov.d)}</p></div>${altl}`;
@@ -264,6 +288,7 @@ function render(){
   const ae=document.activeElement,aid=ae&&ae.id,caret=ae&&ae.selectionStart;
   const sy=window.scrollY;$("#groups").innerHTML=html;window.scrollTo(0,sy);
   if(aid&&["laanc","pilot","cert","certDate","trnDate","model","reg","regExp","ridType","ridId"].includes(aid)){const e=document.getElementById(aid);if(e){e.focus();try{e.setSelectionRange(caret,caret)}catch(_){}}}
+  const pk=$("#pinok");if(pk)pk.hidden=!(S.loc.pin&&!S.loc.pinOk);
   renderCard();
 }
 function renderCard(){
@@ -279,9 +304,9 @@ function renderCard(){
   <div class="st ${cls}">${S.wx.mode==="loading"?"Scanning…":ov.t}</div>
   <dl class="meta">
    <dt>Pilot</dt><dd>${esc(S.pilot||"not entered")}</dd><dt>Remote Pilot Cert</dt><dd>${esc(S.cert||"not entered")}</dd><dt>Aircraft</dt><dd>${esc(S.model||"not entered")}</dd><dt>Registration</dt><dd>${esc(S.reg||"not entered")}${S.regExp?" (exp "+esc(S.regExp)+")":""}</dd><dt>Remote ID</dt><dd>${esc(RIDNAME[S.ridType]||"not entered")}${S.ridId?" · "+esc(S.ridId):""}</dd>
-   <dt>Position</dt><dd>${L.lat.toFixed(5)}, ${L.lon.toFixed(5)} (${L.src==="gps"?"GPS ±"+Math.round(L.acc)+" m":L.src})</dd>
+   <dt>Position</dt><dd>${L.lat.toFixed(5)}, ${L.lon.toFixed(5)} (${posSrc(L)})</dd>
    <dt>Scanned</dt><dd>${local} local · ${utc}</dd>
-   <dt>Ground / max</dt><dd>${ge.ft==null?"?":ge.ft} ft MSL / ${(S.faa.grid!=null?Math.min(400,S.faa.grid):400)} ft AGL</dd>
+   <dt>Ground / max</dt><dd>${ge.ft==null?"?":ge.ft} ft MSL / ${(effGrid()!=null?Math.min(400,effGrid()):400)} ft AGL</dd>
    <dt>Nearest Class B</dt><dd>${D.nearB?D.nearB.id+" "+fmt1(D.nearB.dist)+" mi "+compass(D.nearB.brg):"n/a"}</dd>
    <dt>Authorization</dt><dd>${LAST.controlled?esc(S.laanc?"LAANC "+S.laanc.toUpperCase():"required, not yet entered"):"not required"}</dd>
    <dt>Weather</dt><dd>${W&&W.m?esc(W.st.icao)+" "+W.m.cat+(sample?" (sample)":""):"n/a"}</dd>
@@ -295,11 +320,12 @@ function renderCard(){
   $("#copy").onclick=()=>copyText(ov,local,utc,W,D);tick();
 }
 async function sha(txt){try{const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(txt));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}catch(e){let h=5381;for(const ch of txt)h=((h<<5)+h+ch.charCodeAt(0))>>>0;return h.toString(16).padStart(8,"0").repeat(8)}}
-function tick(){const e=$("#valid");if(!e)return;const mins=60-Math.floor((Date.now()-S.scanAt.getTime())/60000);e.textContent=mins>0?"valid "+mins+" min":"EXPIRED, rescan"}
+function tick(){if(S.loc.src==="gps"&&S.loc.fixAt&&!S.loc.stale&&Date.now()-S.loc.fixAt>GPS_MAX_AGE){S.loc.stale=true;render()}const e=$("#valid");if(!e)return;const mins=60-Math.floor((Date.now()-S.scanAt.getTime())/60000);e.textContent=mins>0?"valid "+mins+" min":"EXPIRED, rescan"}
 setInterval(tick,15000);
+function posSrc(L){return L.src==="gps"?"GPS ±"+Math.round(L.acc)+" m":L.pin?(L.pinOk?"pin, confirmed":"pin, not confirmed"):L.src}
 function copyText(ov,local,utc,W,D){
   const L=S.loc;
-  const lines=["PRE-FLIGHT RECORD "+(S.wx.mode==="live"?"":"(PREVIEW, SAMPLE WEATHER) ")+S.scanId,"Status: "+ov.t,"Pilot: "+(S.pilot||"-")+" | Remote Pilot Cert: "+(S.cert||"-"),"Aircraft: "+(S.model||"-")+" | Reg: "+(S.reg||"-")+(S.regExp?" (exp "+S.regExp+")":"")+" | Remote ID: "+(RIDNAME[S.ridType]||"-")+" "+(S.ridId||""),"Position: "+L.lat.toFixed(5)+", "+L.lon.toFixed(5)+" ("+L.src+") | Scanned "+local+" local ("+utc+")","Nearest Class B: "+(D.nearB?D.nearB.id+" "+fmt1(D.nearB.dist)+" mi":"n/a"),""].concat(LAST.C.map(c=>"["+c.status.toUpperCase()+"] "+c.label+": "+c.value));
+  const lines=["PRE-FLIGHT RECORD "+(S.wx.mode==="live"?"":"(PREVIEW, SAMPLE WEATHER) ")+S.scanId,"Status: "+ov.t,"Pilot: "+(S.pilot||"-")+" | Remote Pilot Cert: "+(S.cert||"-"),"Aircraft: "+(S.model||"-")+" | Reg: "+(S.reg||"-")+(S.regExp?" (exp "+S.regExp+")":"")+" | Remote ID: "+(RIDNAME[S.ridType]||"-")+" "+(S.ridId||""),"Position: "+L.lat.toFixed(5)+", "+L.lon.toFixed(5)+" ("+posSrc(L)+") | Scanned "+local+" local ("+utc+")","Nearest Class B: "+(D.nearB?D.nearB.id+" "+fmt1(D.nearB.dist)+" mi":"n/a"),""].concat(LAST.C.map(c=>"["+c.status.toUpperCase()+"] "+c.label+": "+c.value));
   if(W&&W.raw){lines.push("","METAR: "+W.raw);if(W.tafRaw)lines.push("TAF: "+W.tafRaw.replace(/\n\s*/g," "))}
   lines.push("","Pilot checks: "+MANUAL_IDS.filter(id=>S.manual[id]).length+"/"+MANUAL_IDS.length,"Fingerprint: "+($("#hash")?$("#hash").textContent:""));
   const txt=lines.join("\n"),box=$("#copybox");const show=()=>{box.style.display="block";box.textContent=txt};
@@ -334,12 +360,28 @@ async function loadAll(){
   jobs.push((async()=>{try{const j=await fetchJson("https://api.weather.gov/points/"+L.lat.toFixed(4)+","+L.lon.toFixed(4));if(tok!==S.token)return;const r=j.properties.relativeLocation.properties;S.place={text:r.city+", "+r.state,src:"NWS"};render()}catch(e){}})());
   jobs.push((async()=>{
     try{
-      const q=(svc,fields)=>"https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/"+svc+"/FeatureServer/0/query?where=1%3D1&geometry="+L.lon+"%2C"+L.lat+"&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields="+fields+"&returnGeometry=false&f=json";
+      const q=(svc,fields,r)=>"https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services/"+svc+"/FeatureServer/0/query?where=1%3D1&geometry="+L.lon+"%2C"+L.lat+"&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects"+(r?"&distance="+r+"&units=esriSRUnit_Meter":"")+"&outFields="+fields+"&returnGeometry=false&f=json";
       const a=await fetchJson(q("Class_Airspace","*"),9000);if(tok!==S.token)return;
       if(!a.features)throw new Error("bad layer");
       const surface=a.features.map(f=>f.attributes).filter(x=>x.CLASS&&["B","C","D","E"].includes(String(x.CLASS).toUpperCase())&&(Number(x.LOWER_VAL)<=0)).map(x=>({cls:String(x.CLASS).toUpperCase(),name:x.NAME||x.ICAO_ID||""}));
       let grid=null;try{const g=await fetchJson(q("FAA_UAS_FacilityMap_Data","*"),9000);const f=(g.features||[]).map(f=>Number(f.attributes.CEILING)).filter(n=>isFinite(n));if(f.length)grid=Math.min(...f)}catch(e){}
-      if(tok!==S.token)return;S.faa={state:"live",surface,grid};render();
+      if(tok!==S.token)return;S.faa={state:"live",surface,grid,edge:null};render();
+      // GPS: does anything different lie inside the accuracy circle? (one airspace query + one grid query)
+      if(L.src==="gps"&&L.acc>0){
+        try{
+          const r=Math.min(Math.round(L.acc),2000);
+          const [an,gn]=await Promise.all([fetchJson(q("Class_Airspace","CLASS,NAME,LOWER_VAL",r),9000),fetchJson(q("FAA_UAS_FacilityMap_Data","CEILING",r),9000)]);
+          if(tok!==S.token)return;
+          if(!an.features||!gn.features)throw new Error("bad layer");
+          const key=x=>x.cls+"|"+x.name;
+          const near=an.features.map(f=>f.attributes).filter(x=>x.CLASS&&["B","C","D","E"].includes(String(x.CLASS).toUpperCase())&&Number(x.LOWER_VAL)<=0).map(x=>({cls:String(x.CLASS).toUpperCase(),name:x.NAME||x.ICAO_ID||""}));
+          const here=new Set(surface.map(key)),diff=near.filter(x=>!here.has(key(x)));
+          const ceil=[...new Set(gn.features.map(f=>Number(f.attributes.CEILING)).filter(n=>isFinite(n)))].sort((a,b)=>a-b);
+          const gridX=ceil.length>1||(ceil.length===1&&grid!==ceil[0])||(grid!=null&&!ceil.length);
+          S.faa.edge={checked:true,air:diff.length?[...new Set(diff.map(x=>"Class "+x.cls+(x.name?" "+x.name:"")))].join(", "):"",grid:gridX,ceilings:ceil,gridMin:ceil.length?ceil[0]:null};
+        }catch(e){if(tok!==S.token)return;S.faa.edge={checked:false}}
+        render();
+      }
     }catch(e){}
   })());
   await Promise.all(jobs);
@@ -350,7 +392,7 @@ function useGps(auto){
   const st=$("#gpsmsg");
   if(!navigator.geolocation){st.textContent="This browser has no GPS access. Pick a preset or type coordinates.";return}
   st.textContent="Waiting for GPS…";
-  try{navigator.geolocation.getCurrentPosition(pos=>{const c=pos.coords;st.textContent="GPS fix ±"+Math.round(c.accuracy)+" m";setLoc(c.latitude,c.longitude,"gps","My position",{acc:c.accuracy,alt:c.altitude})},err=>{st.textContent=(auto?"Showing "+S.loc.label+" (default). ":"")+(err.code===1?"GPS is blocked or was refused here.":"No GPS fix.")+" Pick a preset, tap the map, or type coordinates."},{enableHighAccuracy:true,timeout:12000,maximumAge:0})}
+  try{navigator.geolocation.getCurrentPosition(pos=>{const c=pos.coords;st.textContent="GPS fix ±"+Math.round(c.accuracy)+" m"+(c.accuracy>GPS_GOOD_M?". Approximate location. Drop a pin on your launch spot.":"");setLoc(c.latitude,c.longitude,"gps","My position",{acc:c.accuracy,alt:c.altitude,fixAt:pos.timestamp||Date.now()})},err=>{st.textContent=(auto?"Showing "+S.loc.label+" (default). ":"")+(err.code===1?"GPS is blocked or was refused here.":"No GPS fix.")+" Pick a preset, tap the map, or type coordinates."},{enableHighAccuracy:true,timeout:12000,maximumAge:0})}
   catch(e){st.textContent="GPS is not available here. Pick a preset or type coordinates."}
 }
 
@@ -369,7 +411,8 @@ function mapInit(){
   MAP.attributionControl.addAttribution("Charts: FAA Los Angeles and San Francisco VFR Sectionals, San Diego VFR Terminal Area Chart");
   L.control.scale({imperial:true,metric:false,position:"bottomleft"}).addTo(MAP);
   MAPL=L.layerGroup().addTo(MAP);
-  MAP.on("click",e=>{if(!PIN)return;setPin(false);setLoc(e.latlng.lat,e.latlng.lng,"manual","Dropped pin")});
+  MAP.on("click",e=>{if(!PIN)return;setPin(false);setLoc(e.latlng.lat,e.latlng.lng,"manual","Dropped pin",{pin:true,pinOk:false});$("#gpsmsg").textContent="Pin dropped. If it sits exactly on your launch spot, press Confirm pin under the map."});
+  $("#pinok").onclick=()=>{if(!S.loc.pin)return;S.loc.pinOk=true;$("#gpsmsg").textContent="Pin confirmed as your launch spot.";render()};
   $("#chartop").oninput=e=>{CHARTS.forEach(c=>c.setOpacity(e.target.value/100));$("#chartopv").textContent=e.target.value+"%"};
   $("#chartvis").onchange=e=>{CHARTS.forEach(c=>{if(e.target.checked)c.addTo(MAP);else MAP.removeLayer(c)})};
   $("#recenter").onclick=()=>mapUpdate(true);
