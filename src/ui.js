@@ -124,6 +124,37 @@ function ceilState(controlled){
   if(controlled){if(g==null)return {k:"nogrid",ft:null};if(g<=0)return {k:"zero",ft:0};return {k:"ok",ft:Math.min(400,g)}}
   return {k:"ok",ft:g!=null?Math.min(400,g):400};
 }
+/* TFRs (roadmap 3): FAA tfr.faa.gov via /api/tfr. Pass only when the feed was reached and no TFR
+   is within TFR_RADIUS_MI; caution when unreachable, nearby, upcoming, or above the drone's altitude;
+   fail when inside an active TFR that reaches down to drone altitude.
+   NOTAMs: the FAA NOTAM API needs a registered key, so they are NOT checked; the row says so. */
+const TFR_RADIUS_MI=5;
+const altTxt=l=>l?(l.val===0&&l.ref==="AGL"?"surface":l.val.toLocaleString()+" ft "+l.ref):"not listed";
+const tfrWhen=t=>{const d=x=>zfmt(new Date(x))+" "+new Date(x).toLocaleDateString([], {month:"short",day:"numeric"});
+  if(!t.effective&&!t.expires)return "no end date listed (until further notice)";
+  return [t.effective?"from "+d(t.effective):"",t.expires?"until "+d(t.expires):"until further notice"].filter(Boolean).join(" ")};
+function tfrEval(t,ge){
+  const now=Date.now(),eff=t.effective?Date.parse(t.effective):null,exp=t.expires?Date.parse(t.expires):null;
+  const active=(eff==null||eff<=now)&&(exp==null||exp>now),upcoming=eff!=null&&eff>now;
+  // Does the TFR reach down to drone altitude (400 ft AGL)? MSL limits need ground elevation.
+  let low=null;if(t.lower){low=t.lower.ref==="AGL"?t.lower.val:t.lower.ref==="MSL"&&ge.ft!=null?t.lower.val-ge.ft:null}
+  const above=low!=null&&low>400;
+  return {active,upcoming,above,ended:exp!=null&&exp<=now};
+}
+function tfrCheck(ge){
+  const T=S.tfr;
+  if(!T||T.state==="none")return {s:"caution",v:"Checking FAA TFRs…",d:""};
+  if(T.state==="error")return {s:"caution",v:"Not checked",d:"The FAA TFR feed could not be reached ("+T.reason+"). Check tfr.faa.gov before flying."};
+  const nat=T.noShape.length?" Also "+T.noShape.length+" nationwide or DC TFRs have no map shape, so SkyClear can't place them: read them on tfr.faa.gov.":"";
+  const inside=T.near.filter(t=>t.inside),near=T.near.filter(t=>!t.inside);
+  const desc=t=>(t.name||t.title)+" ("+t.type.toLowerCase()+", "+altTxt(t.lower)+" to "+altTxt(t.upper)+", "+tfrWhen(t)+(t.detail===false?"; times and altitudes not loaded":"")+")";
+  for(const t of inside){const e=tfrEval(t,ge);
+    if(e.active&&!e.above&&!e.ended)return {s:"fail",v:"Inside an active TFR",d:"You are inside "+desc(t)+". Do not fly unless the TFR allows your operation."+nat};}
+  if(inside.length){const t=inside[0],e=tfrEval(t,ge);
+    return {s:"caution",v:e.upcoming?"Inside a TFR that starts later":e.above?"Under a TFR (starts above 400 ft AGL)":"Inside a TFR area",d:"You are inside "+desc(t)+". Check the times and altitudes on tfr.faa.gov."+nat};}
+  if(near.length)return {s:"caution",v:"TFR "+near[0].mi+" mi away",d:"Within "+TFR_RADIUS_MI+" mi: "+near.map(t=>desc(t)+", "+t.mi+" mi").join("; ")+". Stay clear and check tfr.faa.gov."+nat};
+  return {s:"pass",v:"None within "+TFR_RADIUS_MI+" mi",d:"Checked "+T.total+" active and upcoming FAA TFRs; none covers this spot or comes within "+TFR_RADIUS_MI+" mi."+nat};
+}
 function buildChecks(D){
   const C=[];const add=(group,id,label,status,value,detail,src)=>C.push({group,id,label,status,value,detail:detail||"",src:src||""});
   const L=S.loc,now=new Date();
@@ -155,6 +186,8 @@ function buildChecks(D){
     add("Airspace","laanc","Authorization (LAANC)",have?"pass":"hold",have?"Auth "+S.laanc.trim().toUpperCase():"Needed before launch",
       (effGrid()!=null?"Facility-map grid ceiling here: "+effGrid()+" ft AGL. ":"Look up the grid ceiling in your LAANC app. ")+"Request authorization, then enter the number below.","FAA UAS Facility Map / LAANC");
   }
+  {const ge1=groundElev(),tc=tfrCheck(ge1);add("Airspace","tfr","TFR (temporary flight restrictions)",tc.s,tc.v,tc.d,S.tfr&&S.tfr.state==="live"?"FAA tfr.faa.gov · live":"FAA tfr.faa.gov");}
+  add("Airspace","notam","NOTAMs","caution","Not checked by SkyClear","The FAA NOTAM API needs a registered key, so SkyClear does not read NOTAMs. Search the FAA NOTAM Search for the launch area and nearby airports before flying.","FAA NOTAM Search");
   const near=D.list.filter(a=>a.dist<=3);
   add("Airspace","apt","Airports within 3 mi",near.length&&!controlled?"caution":"pass",near.length?near.map(a=>a.id+" "+fmt1(a.dist)+" mi").join(" · "):"None",near.length?"Manned aircraft may be low and close. "+(controlled?"Your authorization covers the controlled airspace, not the traffic.":"Consider calling the airport operator."):"No charted airports inside the 3 mi ring.","Chart airport list");
   // altitude
@@ -295,6 +328,7 @@ function render(){
     let body="";
     if(g==="Altitude")body+=`<div class="viz"><div>${altViz()}</div><div><div class="l">Height above ground and above sea level</div><p class="d2">The aircraft altitude readout is usually height above the takeoff point. Add ground elevation to compare with MSL charts.</p></div></div>`;
     body+=rows.map(rowHTML).join("");
+    if(g==="Airspace")body+=`<p class="tfrlinks">TFRs and NOTAMs: <a href="https://tfr.faa.gov/" target="_blank" rel="noopener">FAA TFR list ↗</a> · <a href="https://notams.aim.faa.gov/notamSearch/" target="_blank" rel="noopener">FAA NOTAM Search ↗</a>${S.tfr&&S.tfr.near?S.tfr.near.map(t=>` · <a href="${esc(t.link)}" target="_blank" rel="noopener">TFR ${esc(t.id)} ↗</a>`).join(""):""}</p>`;
     if(g==="Airspace"&&controlled)body+=fileLaancHTML(ceilState(controlled).k==="zero");
     if(g==="Airspace")body+=`<div class="fields"><div><label for="laanc">LAANC authorization number</label><input id="laanc" autocomplete="off" placeholder="${controlled?"Enter after approval":"Not required here"}" value="${esc(S.laanc)}" ${controlled?"":"disabled"}></div></div>`;
     html+=`<section class="grp"><h2>${g==="Location"?"Position and chart":g}<small>${rows.filter(c=>c.status==="pass").length}/${rows.length} clear</small></h2>${body}</section>`;
@@ -368,7 +402,8 @@ function srcTimes(W){
   return [["LAANC grid",gridTxt],["METAR",S.wx.mode==="live"?(oi?"observed "+stamp(oi.at)+" ("+agoTxt(oi.min)+")":"time not reported")+", fetched "+stamp(S.wx.at):S.wx.mode==="loading"?"loading":"SAMPLE, not live"],
     ["Airspace",S.faa.state==="live"?"FAA Class Airspace layer, fetched "+stamp(S.faa.at)+(S.faa.viaRelay?" via SkyClear relay":""):S.faa.state==="error"?"FAA, could not load at "+stamp(S.faa.at)+faaWhy():"loading"],
     ["Ground elevation",S.elev.at?"USGS, fetched "+stamp(S.elev.at):S.loc.presetElev!=null&&S.loc.src==="preset"?"preset value":"not loaded"],
-    ["TFR","not checked by SkyClear"]];
+    ["TFR",S.tfr&&S.tfr.state==="live"?"FAA tfr.faa.gov, "+S.tfr.total+(S.tfr.total===1?" TFR":" TFRs")+" checked, "+(S.tfr.near.length?S.tfr.near.length+" within "+TFR_RADIUS_MI+" mi":"none within "+TFR_RADIUS_MI+" mi")+", fetched "+stamp(S.tfr.at):S.tfr&&S.tfr.state==="error"?"not checked ("+S.tfr.reason+")":"loading"],
+    ["NOTAMs","not checked by SkyClear (FAA NOTAM API needs a key)"]];
 }
 function posSrc(L){return L.src==="gps"?"GPS ±"+Math.round(L.acc)+" m":L.pin?(L.pinOk?"pin, confirmed":"pin, not confirmed"):L.src}
 function copyText(ov,local,utc,W,D){
@@ -384,6 +419,7 @@ function copyText(ov,local,utc,W,D){
 /* ---- data loading ---- */
 async function loadAll(){
   const tok=++S.token;S.scanAt=new Date();S.scanId=newId();
+  S.tfr={state:"none"};
   S.wx.mode="loading";S.elev={ft:null,src:""};S.place={text:"",src:""};S.faa={state:"none",surface:[],grid:null};
   const D=derived();render();mapUpdate(true);
   const L=S.loc;
@@ -446,6 +482,13 @@ async function loadAll(){
       }
     }catch(e){if(tok!==S.token)return;S.faa={state:"error",surface:[],grid:null,cells:[],reason:String(e&&e.message||e),at:new Date()};render()}
   })());
+  jobs.push((async()=>{
+    try{const j=await fetchJson("/api/tfr?lat="+L.lat.toFixed(5)+"&lon="+L.lon.toFixed(5)+"&r="+TFR_RADIUS_MI,20000);if(tok!==S.token)return;
+      if(!j||!j.checked||!Array.isArray(j.near))throw new Error(j&&j.error||"unexpected response");
+      S.tfr={state:"live",at:new Date(),fetched:j.fetched?new Date(j.fetched):new Date(),total:j.total,near:j.near,noShape:j.noShape||[]};
+    }catch(e){if(tok!==S.token)return;S.tfr={state:"error",at:new Date(),reason:e&&e.name==="AbortError"?"timed out":String(e&&e.message||e).replace(/^HTTP /,"server HTTP ")}}
+    render();mapUpdate(false);
+  })());
   await Promise.all(jobs);
 }
 function syncPreset(){const sel=$("#preset");if(!sel)return;const x=S.loc.src==="preset"&&PRESETS.find(z=>z.name===S.loc.label);sel.value=x?x.k:"";}
@@ -499,6 +542,9 @@ function mapUpdate(fit){
     if(!AIRL&&ap.dist<=Math.max(S.radius*2.5,12)){ // fallback until the FAA airport layer has loaded
       L.marker([ap.lat,ap.lon],{interactive:true,keyboard:false,icon:L.divIcon({className:"apt",html:'<span class="apd"></span><span class="apl">'+esc(ap.id)+"</span>",iconSize:[16,16],iconAnchor:[8,8]})}).bindTooltip(esc(ap.id)+" · "+esc(ap.name)+(ap.cls?" · Class "+ap.cls:" · no tower")+" · "+fmt1(ap.dist)+" mi",{direction:"top"}).addTo(MAPL)}
   });
+  // TFRs near the position (from the FAA TFR shapes)
+  if(S.tfr&&S.tfr.near)S.tfr.near.forEach(t=>{if(!t.geometry)return;
+    L.geoJSON(t.geometry,{style:{color:"#ff3b3b",weight:2,dashArray:"8 4",fillColor:"#ff3b3b",fillOpacity:.12},interactive:true}).bindTooltip("TFR "+esc(t.id)+" · "+esc(t.name||t.title)+" · "+esc(altTxt(t.lower))+" to "+esc(altTxt(t.upper)),{sticky:true}).addTo(MAPL)});
   // search radius
   L.circle(ll,{radius:S.radius*MI,color:"#0a7d4d",weight:2,dashArray:"2 6",fill:false,interactive:false}).addTo(MAPL);
   if(S.loc.acc)L.circle(ll,{radius:S.loc.acc,color:"#1f6fe5",weight:1,fillColor:"#1f6fe5",fillOpacity:.15,interactive:false}).addTo(MAPL);
@@ -594,7 +640,7 @@ function reqHTML(){
   ${card("Drone registration and Remote ID",`<p>The drone is registered on the FAA DroneZone site, and the Remote ID rules apply. The registration number goes on the outside of the aircraft, and the aircraft broadcasts Remote ID (built in, with an attached module, or inside an FRIA).</p><p class="note">In this app: registration number and expiry, the Remote ID method and ID, and a broadcast check.</p>`)}
   ${card("Airspace authorization",`<p>In controlled airspace (Class B, C, D or E surface areas) the pilot gets approval through LAANC. LAANC is built into approved apps and is also available through DroneZone. Much of the LA basin is controlled airspace near LAX, Hawthorne and Torrance, so this comes up often.</p><p class="note">In this app: the airspace checks tell you when authorization is needed, and the record keeps the LAANC number.</p>`)}
   ${card("Waivers",`<p>Night flights are allowed with the right training and lighting. Flying over people, beyond line of sight, or multiple aircraft at once may need a waiver or specific compliance. Those requests go through DroneZone, not a FSDO.</p>`)}
-  ${card("Data sources",`<ul><li><b>Airspace, towers and frequencies:</b> ${esc(CHART.name)}, effective ${esc(CHART.from)} to ${esc(CHART.to)}. Map layers: the full Los Angeles Sectional from the FAA's georeferenced chart file (FAA digital VFR charts, same edition), plus the San Francisco Sectional and San Diego Terminal Area Chart from the FAA PDFs.</li><li><b>METAR and TAF:</b> aviationweather.gov data API. It is free with no key, limited to 100 requests a minute, and it does not allow calls straight from a web page, so the live app needs a small server-side proxy. Until then the weather shows labeled sample text.</li><li><b>Ground elevation:</b> USGS elevation service. <b>Place name:</b> National Weather Service.</li><li><b>Address search:</b> OpenStreetMap (Nominatim, © OpenStreetMap contributors), then the US Census Bureau geocoder if OpenStreetMap finds nothing. The address you type is sent to them through SkyClear's server to look it up and is not stored by SkyClear.</li><li><b>Not yet read by this app:</b> TFRs, NOTAMs and special use airspace. Check tfr.faa.gov and the FAA B4UFLY map.</li></ul>`)}
+  ${card("Data sources",`<ul><li><b>Airspace, towers and frequencies:</b> ${esc(CHART.name)}, effective ${esc(CHART.from)} to ${esc(CHART.to)}. Map layers: the full Los Angeles Sectional from the FAA's georeferenced chart file (FAA digital VFR charts, same edition), plus the San Francisco Sectional and San Diego Terminal Area Chart from the FAA PDFs.</li><li><b>METAR and TAF:</b> aviationweather.gov data API. It is free with no key, limited to 100 requests a minute, and it does not allow calls straight from a web page, so the live app needs a small server-side proxy. Until then the weather shows labeled sample text.</li><li><b>Ground elevation:</b> USGS elevation service. <b>Place name:</b> National Weather Service.</li><li><b>Address search:</b> OpenStreetMap (Nominatim, © OpenStreetMap contributors), then the US Census Bureau geocoder if OpenStreetMap finds nothing. The address you type is sent to them through SkyClear's server to look it up and is not stored by SkyClear.</li><li><b>TFRs:</b> FAA tfr.faa.gov (active list, TFR shapes and details) through SkyClear's server; TFRs within 5 miles are drawn on the map. Nationwide TFRs without a map shape are listed, not placed.</li><li><b>Not read by this app:</b> NOTAMs (the FAA NOTAM API needs a registered key) and special use airspace. Use the FAA NOTAM Search and the sectional chart.</li></ul>`)}
   <section class="grp"><h2>FAA offices, Southern California<small>reference only</small></h2><p class="pad muted" style="padding-bottom:0">Flight Standards District Offices. A drone pilot does not check in with them for a flight. They are listed here so you have the contact details.</p><div class="scroll"><table class="tb"><thead><tr><th>Office</th><th>Address</th><th>Phone</th><th>Fax</th></tr></thead><tbody>${offices.map(o=>`<tr><td><b>${esc(o[0])}</b></td><td>${esc(o[1])}</td><td class="n">${esc(o[2])}</td><td class="n">${esc(o[3])}</td></tr>`).join("")}</tbody></table></div></section>`;
 }
 
