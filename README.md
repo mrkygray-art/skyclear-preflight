@@ -14,13 +14,18 @@ Built while studying for the FAA Part 107 remote pilot exam, to answer one quest
 
 1. **Find the launch point.** On open it asks for the phone's GPS (and shows the fix accuracy). If GPS is refused it starts at LAX. You can also type an **address or place name** (it's looked up and turned into latitude and longitude; when there are several matches you pick one), choose a preset, type coordinates, or tap the map.
 2. **Check the airspace.** The FAA's own airspace layer says whether controlled airspace (Class B, C, D or E) reaches the ground there, and the FAA UAS Facility Map gives the LAANC grid ceiling. The result is shown as *Fly up to ___ ft AGL*, the same number in feet MSL, and whether LAANC authorization is needed.
-3. **Read the weather.** Live METAR and TAF from aviationweather.gov for the 3 nearest reporting stations, decoded element by element (wind, visibility, clouds, temperature) and checked against the Part 107 weather minimums.
+3. **Read the weather.** Live METAR and TAF from aviationweather.gov for the 3 nearest reporting stations, decoded element by element (wind, visibility, clouds, temperature), with the observation time and age (amber over 75 minutes, red over 2 hours), and checked against the Part 107 weather minimums.
 4. **Run the checklist.** 18 pilot confirmations: certificate and recurrent training, registration and Remote ID, aircraft, TFRs, NOTAMs, people, line of sight.
 5. **Get a call and a record.** GO, HOLD (for example, LAANC still needed) or NO-GO (a blocking condition, like a GPS fix more than 5 minutes old), plus a pre-flight record card with a SHA-256 fingerprint and a "Copy record text" button. The record is valid for 60 minutes.
 
 | LAANC tab | Weather, decoded | On a phone |
 |---|---|---|
 | ![LAANC tab](docs/images/laanc.webp) | ![METAR and TAF](docs/images/weather.webp) | ![Phone](docs/images/phone.webp) |
+
+## LAANC
+
+- When LAANC is needed, the Pre-flight screen shows **File LAANC** buttons for the FAA-approved providers (from the FAA's list; where the grid is 0 ft, only providers that offer further coordination).
+- The LAANC grid ceiling comes from the FAA's own UAS Facility Map service. A 0 ft grid shows in red as "not available via LAANC"; if the FAA data can't load, the ceiling shows "not confirmed", never an assumed 400 ft.
 
 ## LAANC tab
 
@@ -44,14 +49,15 @@ Quick links to FAA TFRs, FAA NOTAM Search, METARs for the 3 nearest stations, an
 
 - **No framework, no build step on Vercel.** `index.html` is generated from `src/template.html`, `src/core.js` (airports, decoders, sun times) and `src/ui.js` (UI, map, loading) by `python3 src/build.py`.
 - **`api/wx.js`:** a small Vercel serverless relay to aviationweather.gov (the API doesn't allow calls straight from a web page). Only `metar` and `taf` are allowed, inputs are checked, and responses are cached for 60 seconds.
-- **Map:** Leaflet 1.9.4 over Esri World Street Map, with FAA charts as overlays: the full Los Angeles sectional (`l/`, cut from the FAA's own georeferenced GeoTIFF with the legend, tables and Basin inset removed), plus the San Francisco sectional (`s/`) and the San Diego terminal area chart (`d/`), georeferenced from FAA PDFs. All are WebP tiles.
+- **Map:** Leaflet 1.9.4 over Esri World Street Map, with FAA charts as overlays: the Las Vegas sectional (`v/`, cut the same way), the full Los Angeles sectional (`l/`, cut from the FAA's own georeferenced GeoTIFF with the legend, tables and Basin inset removed), plus the San Francisco sectional (`s/`) and the San Diego terminal area chart (`d/`), georeferenced from FAA PDFs. All are WebP tiles.
 - **`api/geo.js`:** address lookup relay. It asks OpenStreetMap's Nominatim first (addresses and place names, United States only, © OpenStreetMap contributors), then the US Census Bureau geocoder if OpenStreetMap finds nothing. No keys; results are cached for a day, and matches within about 200 m of each other are merged.
+- **Airport data:** every public-use airport in the chart coverage (326) from the FAA's NASR 28-day data (class, tower/ground/ATIS/CTAF frequencies, hours, elevation, weather station), generated into `src/airports_nasr.js` by `tools/nasr/make_airports.py`. The app flags when the 28-day cycle has ended.
 - **Other public data:** USGS elevation service (ground elevation), National Weather Service (place name), FAA airspace and UAS Facility Map layers on ArcGIS.
 - **Installable app (PWA):** `manifest.webmanifest`, app icons, and `sw.js`, a network-first service worker for the app shell only. It never touches `/api/` or other sites.
 
 ## Known gaps
 
-- Airport, tower and frequency data covers Southern California only. Charts now cover the whole Los Angeles sectional (Big Sur to Blythe, Lemoore to the border) and the San Francisco sectional, with no gap between them.
+- Airport data and charts cover the Los Angeles, San Francisco and Las Vegas sectionals and the San Diego TAC.
 - TFRs, NOTAMs and special use airspace are not read yet; the checklist sends the pilot to tfr.faa.gov and the FAA NOTAM search.
 
 ## Run it locally
