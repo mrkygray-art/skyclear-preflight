@@ -3,8 +3,8 @@
 // - Never touch /api/ (live weather) or other websites (FAA, USGS, NWS, map tiles from Esri).
 //   Weather must always be live or clearly labeled SAMPLE by the app, never an old saved copy.
 // - Network first, so every deploy shows up right away. The saved copy is only used when offline.
-const CACHE = "skyclear-shell-v1";
-const SHELL = ["/", "/leaflet.js", "/leaflet.css", "/favicon.ico", "/icon-192.png", "/manifest.webmanifest"];
+const CACHE = "skyclear-shell-v2";
+const SHELL = ["/", "/leaflet.js", "/leaflet.css", "/favicon.ico", "/icon-192.png", "/manifest.webmanifest", "/data/uasfm_ca_lv.json"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

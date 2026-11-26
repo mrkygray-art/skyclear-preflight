@@ -21,6 +21,7 @@ Drone pilot pre-flight clearance web app for Ky (Part 107 student, Southern Cali
 
 ## Layout
 - `src/core.js` data and logic (AIRPORTS, PRESETS, decoders, sun times, ring sizes); `src/ui.js` UI, checks, map, data loading; `src/template.html` shell and CSS.
+- `data/uasfm_ca_lv.json` saved LAANC ceiling lookup (see "Saved ceiling data"); `tools/build_uasfm.py` rebuilds it.
 - `api/tfr.js` TFR relay (tfr.faa.gov has no CORS): official active list `tfrapi/exportTfrList`, shapes from the FAA TFR GeoServer WFS `TFR:V_TFR_LOC` (GeoJSON), times/altitudes from `download/detail_<n>_<nnnn>.xml` (dates are UTC). Only shapes on the active list are used; returns TFRs inside or within `r` miles (default 5) with geometry, plus `noShape` (nationwide/DC TFRs that have no map shape). National list+shapes cached 2 min per instance.
 - `api/laanc.js` BACKUP relay for the FAA grid and Class Airspace layers (the browser calls the FAA directly first).
 - `api/wx.js` relay to aviationweather.gov (METAR/TAF JSON; browsers can't call it directly, no CORS). Pattern for any new relay: whitelist paths and parameters, validate characters, short cache header, return clear errors, never forward arbitrary URLs.
@@ -40,6 +41,12 @@ Ky saw "Ceiling not confirmed. The FAA data could not be loaded" in Pasadena. Fi
 - Overlapping cells: all kept in `S.faa.cells`; the LOWEST ceiling is used and every facility is listed. `ceilState()` adds "nogrid" (controlled airspace, lookup worked, no cell = "No UAS Facility Map grid here") separate from "unk" (lookup failed = "Ceiling not confirmed").
 - Ceiling 0 = red "No automatic LAANC here: further coordination or waiver needed". Record card "Data times" starts with the LAANC grid line: value, facilities, "FAA UAS Facility Map, map effective <MAP_EFF>, fetched <time>" (and "via SkyClear relay" when used).
 - Mock tests (Playwright): 200, 0, no grid, overlapping 300+100, service error, direct-fails-relay-works.
+
+## Saved ceiling data (UASFM extract) and the ceiling grid layer (built 2026-11-25)
+`data/uasfm_ca_lv.json` = Ky's export of FAA UAS FacilityMap Data compressed by `tools/build_uasfm.py` (`python3 tools/build_uasfm.py <export.geojson>`; do not hand-edit). Format `{"v":1,"cell":120,"mapEff":"10/29/2026","fac":[[icao,name],...],"c":{"<x>,<y>":[ceilingFt,facIdx,...]}}`, key = floor(lon*120)+","+floor(lat*120). 34,690 squares, 99 facilities.
+- Coverage is a RECTANGLE (lon -124.367 to -114.467, lat 32.517 to 42.1; the export's own edges), not just California + Las Vegas: it includes Yuma AZ, the Klamath Falls edge (OR) and western Nevada (Reno, Fallon, Battle Mountain, Tonopah, Tahoe, Indian Springs, Laughlin). The app computes the box from the data on load: inside it, no key = no grid; outside = not confirmed.
+- `ceilState()` order: LIVE FAA first ("Live FAA data"); saved as fallback when live fails (amber, "From saved FAA data effective <mapEff>. Confirm in your LAANC app.") and as a cross-check: if both exist and differ, the LOWER ceiling is used with a mismatch note; a saved value never overrides a lower live value, and a live "no grid" in controlled airspace is kept (stricter). Record card: "LAANC grid used" (+ source), "(live)", "(saved)". Location check "Saved ceiling data" goes amber after 30 days (Ky refreshes about every 28 days). The service worker caches the file for offline fallback (CACHE v2).
+- Map toggle "Ceiling grid" (off by default): canvas GridLayer in pane `ceilPane` (z 350, under markers), drawn from the saved lookup only at zoom >= 10, colors 0 red, 50-100 orange, 150-250 yellow, 300-350 light green, 400 green, numbers at zoom >= 13, hover tooltip and tap popup with facility and data date, legend labelled as saved data. Tested: Hawthorne 200 and LAX 0 match live; Mesquite NV (outside the box) with live blocked = not confirmed; phone toggle ~0.1 s.
 
 ## Roadmap (do in this order, one at a time, preview after each)
 

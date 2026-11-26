@@ -28,6 +28,8 @@ Built while studying for the FAA Part 107 remote pilot exam, to answer one quest
 - When LAANC is needed, the Pre-flight screen shows **File LAANC** buttons for the FAA-approved providers (from the FAA's list; where the grid is 0 ft, only providers that offer further coordination).
 - The LAANC grid ceiling comes from the FAA's own UAS Facility Map service. A 0 ft grid shows in red as "not available via LAANC"; if the FAA data can't load, the ceiling shows "not confirmed", never an assumed 400 ft.
 
+- **Saved FAA ceiling data** (`data/uasfm_ca_lv.json`, an export of the FAA UAS Facility Map for California, western Nevada and the edges of Arizona and Oregon) is the fallback when the live FAA lookup fails, shown in amber with its date, and a cross-check: if live and saved differ, the lower ceiling is used. A **Ceiling grid** map toggle colors every LAANC grid square by its ceiling.
+
 ## LAANC tab
 
 - Shows whether the current spot needs LAANC and the altitude to ask for.
