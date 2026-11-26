@@ -54,15 +54,15 @@ Quick links to FAA TFRs, FAA NOTAM Search, METARs for the 3 nearest stations, an
 - **`api/wx.js`:** a small Vercel serverless relay to aviationweather.gov (the API doesn't allow calls straight from a web page). Only `metar` and `taf` are allowed, inputs are checked, and responses are cached for 60 seconds.
 - **`api/laanc.js`:** backup relay for the FAA LAANC grid and Class Airspace layers (the browser asks the FAA directly first).
 - **`api/tfr.js`:** TFR relay to tfr.faa.gov (active list, TFR shapes and detail XML); validated coordinates only.
-- **Map:** Leaflet 1.9.4 over Esri World Street Map, with FAA charts as overlays: the Las Vegas sectional (`v/`, cut the same way), the full Los Angeles sectional (`l/`, cut from the FAA's own georeferenced GeoTIFF with the legend, tables and Basin inset removed), plus the San Francisco sectional (`s/`) and the San Diego terminal area chart (`d/`), georeferenced from FAA PDFs. All are WebP tiles.
+- **Map:** Leaflet 1.9.4 over Esri World Street Map, with FAA charts as overlays: the Las Vegas and Phoenix sectionals (`v/`, `p/`, cut the same way), the full Los Angeles sectional (`l/`, cut from the FAA's own georeferenced GeoTIFF with the legend, tables and Basin inset removed), plus the San Francisco sectional (`s/`) and the San Diego terminal area chart (`d/`), georeferenced from FAA PDFs. All are WebP tiles.
 - **`api/geo.js`:** address lookup relay. It asks OpenStreetMap's Nominatim first (addresses and place names, United States only, © OpenStreetMap contributors), then the US Census Bureau geocoder if OpenStreetMap finds nothing. No keys; results are cached for a day, and matches within about 200 m of each other are merged.
-- **Airport data:** every public-use airport in the chart coverage (326) from the FAA's NASR 28-day data (class, tower/ground/ATIS/CTAF frequencies, hours, elevation, weather station), generated into `src/airports_nasr.js` by `tools/nasr/make_airports.py`. The app flags when the 28-day cycle has ended.
+- **Airport data:** every public-use airport in the chart coverage (366) from the FAA's NASR 28-day data (class, tower/ground/ATIS/CTAF frequencies, hours, elevation, weather station), generated into `src/airports_nasr.js` by `tools/nasr/make_airports.py`. The app flags when the 28-day cycle has ended.
 - **Other public data:** USGS elevation service (ground elevation), National Weather Service (place name), FAA airspace and UAS Facility Map layers on ArcGIS.
 - **Installable app (PWA):** `manifest.webmanifest`, app icons, and `sw.js`, a network-first service worker for the app shell only. It never touches `/api/` or other sites.
 
 ## Known gaps
 
-- Airport data and charts cover the Los Angeles, San Francisco and Las Vegas sectionals and the San Diego TAC.
+- Airport data and charts cover the Los Angeles, San Francisco, Las Vegas and Phoenix sectionals and the San Diego TAC. The saved ceiling backup covers California, western Nevada and the edges of Arizona and Oregon, so most of Arizona relies on the live FAA lookup.
 - NOTAMs and special use airspace are not read; the app links the FAA NOTAM Search. Nationwide TFRs without a map shape are listed, not placed.
 
 ## Run it locally

@@ -1,5 +1,5 @@
 {
   "headers": [
-    { "source": "/(s|d|l|v)/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }] }
+    { "source": "/(s|d|l|v|p)/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }] }
   ]
 }

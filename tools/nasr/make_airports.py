@@ -16,8 +16,8 @@ def rd(name):
     return list(csv.DictReader(io.TextIOWrapper(z.open(name), encoding="latin-1")))
 
 
-# Coverage: SkyClear's chart layers (LA, SF, San Diego, Las Vegas sectionals), with a small margin.
-LAT0, LAT1, LON0, LON1 = 31.85, 40.25, -125.2, -110.6
+# Coverage: SkyClear's chart layers (LA, SF, Las Vegas, Phoenix sectionals and the San Diego TAC), with a small margin.
+LAT0, LAT1, LON0, LON1 = 31.2, 40.25, -125.2, -108.6
 
 base = [r for r in rd("APT_BASE.csv")
         if r["SITE_TYPE_CODE"] == "A" and r["FACILITY_USE_CODE"] == "PU" and r["ARPT_STATUS"] == "O"
