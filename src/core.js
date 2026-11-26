@@ -4,7 +4,10 @@ const NM=1.15078; // statute miles per nautical mile
 
 /* Airports, classes and frequencies read from the Los Angeles Sectional margin tables.
    Positions are airport reference points, approximate to about 0.01 degree. */
-const AIRPORTS=[
+/* Airports. AIRPORTS_CHART: read from the margin tables of the Los Angeles Sectional (Ky's chart).
+   AIRPORTS_NASR (src/airports_nasr.js, generated): official FAA NASR data for every public-use airport in the chart coverage.
+   A chart entry keeps its chart frequencies; NASR only adds fields the chart list does not have. */
+const AIRPORTS_CHART=[
  {id:"LAX",icao:"KLAX",name:"Los Angeles Intl",lat:33.9425,lon:-118.4081,cls:"B",hrs:"Continuous",
   twr:"133.9 239.3 (N complex) · 120.95 379.1 (S complex) · 119.8 239.3 (heli)",gnd:"121.4 (W) · 121.65 (N complex) · 121.75 (S complex) · 327.0",atis:"133.8 (arrivals) · 135.65 (departures)",
   app:"LA Class B: 124.3 124.5 124.9 125.2 127.4 · 128.75 134.9 235.975 263.025 · 269.0 323.275 346.25 363.2"},
@@ -40,6 +43,12 @@ const AIRPORTS=[
  {id:"CCB",icao:null,name:"Cable (Upland)",lat:34.1116,lon:-117.6883,cls:null},
  {id:"AJO",icao:null,name:"Corona Municipal",lat:33.8978,lon:-117.6026,cls:null}
 ];
+const AIRPORTS=(()=>{
+  const N=typeof AIRPORTS_NASR!=="undefined"?AIRPORTS_NASR:[];
+  const out=AIRPORTS_CHART.map(c=>{const n=N.find(x=>x.id===c.id);const o=Object.assign({},n||{});Object.keys(c).forEach(k=>{if(c[k]!=null)o[k]=c[k]});if(n&&c.cls==null)o.cls=n.cls;return Object.assign(o,{src:"chart",nasr:!!n})});
+  N.forEach(n=>{if(!out.some(o=>o.id===n.id))out.push(Object.assign({src:"nasr"},n))});
+  return out;
+})();
 const PRESETS=[
  {k:"lax",name:"LAX (Los Angeles)",lat:33.9425,lon:-118.4081,elev:128},
  {k:"smo",name:"Santa Monica",lat:34.0100,lon:-118.4960,elev:90},
