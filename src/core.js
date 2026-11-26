@@ -83,7 +83,8 @@ function approxAir(list){
 /* ---- sun (NOAA sunrise equation) ---- */
 function sunTimes(lat,lon,date){
   const jd=date.getTime()/86400000+2440587.5;
-  const n=Math.ceil(jd-2451545.0+0.0008);
+  // Solar day nearest to this moment at this longitude (the old Math.ceil on the UTC Julian date jumped to TOMORROW every afternoon in the western US).
+  const n=Math.round(jd-2451545.0-0.0009+lon/360);
   const Js=n-lon/360, M=(357.5291+0.98560028*Js)%360, Mr=toRad(M);
   const C=1.9148*Math.sin(Mr)+0.02*Math.sin(2*Mr)+0.0003*Math.sin(3*Mr);
   const lam=(M+C+180+102.9372)%360, lr=toRad(lam);
@@ -208,4 +209,140 @@ function sampleWx(icao,now){
   const taf="TAF "+icao+" "+f(0)+"20Z "+f(0)+"/"+f(24)+" "+p2(dir)+p2(spd)+"KT P6SM "+sky+"\n  FM"+f(6)+"00 27010KT P6SM SCT025\n  TEMPO "+f(10)+"/"+f(14)+" 3SM BR BKN008\n  BECMG "+f(15)+"/"+f(17)+" 25006KT P6SM FEW010\n  PROB30 "+f(20)+"/"+f(23)+" 2SM BR OVC005";
   return {metar:metar,taf:taf};
 }
-if(typeof module!=="undefined")module.exports={AIRPORTS,PRESETS,distMi,bearing,compass,around,approxAir,sunTimes,decodeMetar,decodeTaf,sampleWx,flightCat,splitMetars,splitTafs,stationOf,dms,CHART,NM,RING,ringInfo};
+
+/* ---- Plain-language status and LAANC request rules (pure: no DOM, testable in Node) ----
+   explainStatus(st) -> {status, action, why, learnMoreAnchor}. Built from the same state the Airspace
+   section uses, so the banner and the checks can't disagree. Missing values are left out, never guessed.
+   validateRequest(req, ctx) follows LAANC-claude.md (Ky's LAANC reference): it wins where the two files differ. */
+const CLASS_DEF={
+  B:"the controlled airspace around the busiest airports",
+  C:"controlled airspace around busy airports with a control tower and radar",
+  D:"controlled airspace around an airport with a control tower",
+  E:"controlled airspace that reaches the ground around some airports"
+};
+const ABBR={Intl:"International",Muni:"Municipal",Fld:"Field",Rgnl:"Regional",Arpt:"Airport",Exec:"Executive",Afb:"AFB",Aaf:"AAF",Mcas:"MCAS",Nas:"NAS"};
+function niceAptName(n){return String(n||"").replace(/\b[A-Za-z]+\b/g,w=>ABBR[w]||w)}
+// Label for the banner: the name without any bracketed alternate name, then the code, e.g. "Hawthorne Municipal (HHR)"
+function aptLabel(a){const n=niceAptName(a.name).replace(/\s*\([^)]*\)\s*/g," ").trim();return n?n+" ("+a.id+")":a.id}
+function listAnd(xs){xs=xs.filter(Boolean);return xs.length<2?(xs[0]||""):xs.slice(0,-1).join(", ")+" and "+xs[xs.length-1]}
+const fmtTimeLocal=d=>d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})+" on "+d.toLocaleDateString([], {month:"short",day:"numeric"});
+function ceilPhrase(ft,ground){return ft+" ft above the ground (AGL)"+(ground!=null?", which is "+(ground+ft)+" ft above sea level (MSL)":"")}
+function savedSentence(c){return c&&(c.src==="saved"||c.src==="saved-lower")?"This uses saved FAA data from "+(c.eff||"an earlier date")+". Confirm in your LAANC app before you fly.":""}
+/* st: {ov:{k,t,d}, fails:[{id,label,value}], cautions:[{id,label,value}], controlled, classes:["B"], airports:[{id,name}],
+        ceil:{k,ft,src,eff}, groundFt, auth:{state,num,alt,to,from}, left, now} */
+const CAUTION_TXT={
+  gps:x=>/pin/.test(x.value)?"your launch pin isn't confirmed yet":/±/.test(x.value)?"your GPS position is approximate":"your position was typed in or picked from a preset, not read from GPS",
+  notam:()=>"NOTAMs aren't checked by SkyClear, so check them yourself",
+  sun:x=>/Night/.test(x.value)?"it's dark, so night rules apply (lights visible for 3 miles and night training)":"it's twilight, so anti-collision lights are required",
+  tfr:x=>"a temporary flight restriction is nearby ("+x.value+")",
+  apt:()=>"an airport is within 3 miles, so watch for low aircraft",
+  ceil:()=>"the altitude limit here isn't confirmed",
+  wxage:()=>"the weather report is getting old",
+  saved:()=>"the saved FAA ceiling data is more than 30 days old"
+};
+function cautionTxt(x){const f=CAUTION_TXT[x.id];return f?f(x):String(x.label||"").toLowerCase()+" ("+x.value+")"}
+function explainStatus(st){
+  const out={status:st.ov.t,action:st.ov.d,why:"",learnMoreAnchor:"#sec-airspace"};
+  const c=st.ceil||{},g=st.groundFt,why=[];
+  const where=st.airports&&st.airports.length?" near "+listAnd(st.airports.slice(0,3).map(aptLabel)):"";
+  const cls=[...new Set(st.classes||[])].filter(k=>CLASS_DEF[k]).sort();
+  const clsTxt=cls.length?"Class "+listAnd(cls):"";
+  const est=st.approx?"SkyClear's rough airport circles (the FAA airspace data didn't load) put you in ":"You are in ";
+  const airspaceIntro=()=>clsTxt?est+clsTxt+" airspace"+where+". "+(cls.length===1?"Class "+cls[0]+" is "+CLASS_DEF[cls[0]]:"These are controlled airspace around airports")+", and drones need FAA permission to fly there.":est+"controlled airspace"+where+", and drones need FAA permission to fly there.";
+  const k=st.ov.k;
+  if(k==="hold"){
+    const a=st.auth||{};
+    if(a.state==="expired"){out.action="Your authorization has expired. Get a new one before launch.";why.push("Your authorization expired at "+fmtTimeLocal(a.to)+".");why.push("Enter a new LAANC authorization number, with its approved altitude and time window, to change this to GO.")}
+    else if(a.state==="incomplete"){out.action="Finish entering your LAANC authorization.";why.push("You entered an authorization number. Add the approved altitude and the approved start and end time from your LAANC app, so SkyClear can check that it covers this flight.")}
+    else if(a.state==="window"){out.action="Your authorization doesn't cover this flight's time.";why.push("Your LAANC authorization runs "+(a.from?"from "+fmtTimeLocal(a.from)+" ":"")+"until "+fmtTimeLocal(a.to)+", which doesn't cover the planned flight time. Change the planned time or get a new authorization.")}
+    else if(a.state==="low"){out.action="Your authorization doesn't cover the planned altitude.";why.push("Your LAANC authorization allows up to "+a.alt+" ft AGL, which is lower than the "+a.planned+" ft AGL you planned. Lower the planned altitude or get a new authorization.")}
+    else{
+      why.push(airspaceIntro());
+      why.push("LAANC is the FAA's quick online approval for drone flights near airports.");
+      if(c.k==="ok"||c.k==="saved")why.push("Once LAANC approves you, you can fly up to "+ceilPhrase(c.ft,g)+" at this spot, and no higher than what was approved.");
+      else if(c.k==="nogrid")why.push("The FAA has no LAANC grid at this spot, so LAANC can't approve it automatically. You would need an FAA authorization through DroneZone instead.");
+      else if(c.k==="unk")why.push("The highest altitude LAANC allows here couldn't be confirmed right now.");
+      why.push("Enter your LAANC authorization number to change this to GO.");
+    }
+  }else if(k==="stop"){
+    out.action="Do not fly here right now. "+st.ov.d;
+    const f=(st.fails||[]).slice(0,2);
+    f.forEach(x=>{
+      if(x.id==="tfr")why.push("You are inside an active temporary flight restriction (TFR), an area where the FAA has limited flying for now. Check the TFR on tfr.faa.gov before you fly.");
+      else if(x.id==="ceil")why.push("The FAA's LAANC grid is 0 ft here"+where+", so LAANC can't approve a drone flight at this spot. Flying here needs extra coordination with the FAA or a waiver.");
+      else if(x.id==="gps")why.push("Your GPS position is missing or more than 5 minutes old, so SkyClear can't be sure where you are. Press Use my GPS again at the launch spot.");
+      else if(["wind","gust","vis","cloud","precip","wxage"].includes(x.id))why.push("The weather is outside safe or legal limits: "+x.label.toLowerCase()+" is "+x.value+".");
+      else why.push(x.label+": "+x.value+".");
+    });
+    why.push("This changes to GO only when "+(f.length>1?"these are":"this is")+" fixed.");
+  }else if(k==="info"){
+    why.push("The checks SkyClear can do on its own"+(st.cautions&&st.cautions.length?" are done, with "+st.cautions.length+" caution"+(st.cautions.length>1?"s":"")+" to read":" passed")+". "+st.left+" pilot confirmation"+(st.left>1?"s":"")+" in the Pilot, drone and Remote ID section "+(st.left>1?"are":"is")+" still not ticked.");
+    if(st.auth&&st.auth.state==="ok")why.push("Your LAANC authorization "+st.auth.num+" covers this flight up to "+st.auth.alt+" ft AGL until "+fmtTimeLocal(st.auth.to)+".");
+    else if(!st.controlled&&c.ft!=null)why.push("No FAA airspace permission is needed here. Stay at or below "+ceilPhrase(c.ft,g)+".");
+  }else if(k==="warn"){
+    why.push("You may fly, but read these first: "+(st.cautions||[]).slice(0,3).map(cautionTxt).join("; ")+".");
+    if(st.auth&&st.auth.state==="ok")why.push("Your LAANC authorization "+st.auth.num+" covers this flight up to "+st.auth.alt+" ft AGL until "+fmtTimeLocal(st.auth.to)+".");
+  }else if(k==="go"){
+    if(st.auth&&st.auth.state==="ok")why.push("Your LAANC authorization "+st.auth.num+" covers this flight. Fly no higher than "+st.auth.alt+" ft AGL"+(g!=null?" ("+(g+st.auth.alt)+" ft MSL)":"")+", and land by "+fmtTimeLocal(st.auth.to)+".");
+    else if(c.ft!=null)why.push("No FAA airspace permission is needed here. Stay at or below "+ceilPhrase(c.ft,g)+".");
+  }
+  const sv=savedSentence(c);if(sv&&k!=="stop"||sv&&(st.fails||[]).some(x=>x.id==="ceil"))why.push(sv);
+  out.why=why.join(" ");
+  return out;
+}
+
+/* LAANC request rules (LAANC-claude.md sections 6-8). req: {start:Date|null, durMin, alt, purpose, phone, email}
+   ctx: {pilot, cert, certDate, trnDate, model, reg, regExp, ridType, ridId, lat, lon, groundFt, classes, ceil:{k,ft,src,eff}, wxOk, now, sunrise, sunset} */
+function validateRequest(req,ctx){
+  const missing=[],errors=[],warnings=[],now=ctx.now||new Date();
+  const need=(ok,field,where)=>{if(!ok)missing.push({field,where})};
+  const nm=String(ctx.pilot||"").trim().split(/\s+/);
+  need(nm.length>=2,"Pilot first and last name","Pilot, drone and Remote ID section");
+  need(!!ctx.cert,"Remote Pilot Certificate number","Pilot, drone and Remote ID section");
+  need(!!ctx.certDate,"Certificate issue date","Pilot, drone and Remote ID section");
+  need(!!ctx.model,"Aircraft make and model","Pilot, drone and Remote ID section");
+  need(!!ctx.reg,"FAA registration number","Pilot, drone and Remote ID section");
+  need(!!ctx.ridType,"Remote ID method","Pilot, drone and Remote ID section");
+  need(isFinite(ctx.lat)&&isFinite(ctx.lon),"Launch position","the location bar at the top");
+  need(ctx.groundFt!=null,"Ground elevation","wait for it to load, or press Refresh");
+  need(ctx.classes&&ctx.classes.length>0,"Airspace class","wait for the FAA airspace lookup, or press Refresh");
+  need(ctx.ceil&&ctx.ceil.ft!=null||ctx.ceil&&ctx.ceil.k==="nogrid","LAANC grid ceiling","it could not be loaded; press Refresh");
+  need(!!ctx.wxOk,"Live weather summary","the weather is not live right now; press Refresh");
+  need(req.start instanceof Date&&!isNaN(req.start),"Planned start time","this section");
+  need(req.durMin>0,"Duration","this section");
+  need(req.alt>0,"Requested altitude","this section");
+  need(!!String(req.purpose||"").trim(),"Purpose of flight","this section");
+  need(String(req.phone||"").replace(/\D/g,"").length>=10,"Contact phone number","this section");
+  if(req.start instanceof Date&&!isNaN(req.start)){
+    if(req.start.getTime()<now.getTime()-60000)errors.push("The start time is in the past. Pick a time from now on.");
+    if(req.start.getTime()>now.getTime()+90*86400000)errors.push("LAANC requests can be made up to 90 days ahead. Pick an earlier start.");
+  }
+  if(req.alt>400)errors.push("LAANC covers flights at or below 400 ft AGL.");
+  let fc=false;const c=ctx.ceil||{};
+  if(c.k==="nogrid")warnings.push("LAANC isn't available at this spot (no FAA grid). Use the FAA DroneZone manual airspace authorization instead, and apply well ahead: the FAA asks for about 60 days.");
+  if(c.ft!=null&&req.alt>0&&req.alt<=400&&req.alt>c.ft){
+    fc=true;
+    warnings.push(c.ft===0?"Automatic approval isn't available here: the grid is 0 ft, so only a Further Coordination request applies. It is reviewed by FAA air traffic, is not instant, and is for Part 107 pilots only.":"LAANC can approve up to "+c.ft+" ft here automatically. "+req.alt+" ft would be a Further Coordination request: reviewed by FAA air traffic, not instant, and for Part 107 pilots only.");
+    if(req.start instanceof Date&&req.start.getTime()<now.getTime()+48*3600000)warnings.push("Further Coordination requests should be sent at least 48 hours before the flight.");
+  }
+  if(c.src==="saved"||c.src==="saved-lower")warnings.push("This ceiling is from saved FAA data"+(c.eff?" ("+c.eff+")":"")+". Confirm it in your LAANC app before you submit.");
+  if(ctx.regExp){const d=new Date(ctx.regExp+"T23:59:59");if(!isNaN(d)&&d<now)errors.push("The drone's FAA registration expired on "+ctx.regExp+". Renew it in FAA DroneZone.")}
+  if(ctx.trnDate){const d=new Date(ctx.trnDate+"T00:00:00");if(!isNaN(d)){const due=new Date(d);due.setMonth(due.getMonth()+25);due.setDate(0);if(due<now)warnings.push("Your recurrent training date is more than 24 calendar months ago. Check that your Part 107 currency is up to date.")}}
+  let night=false;if(req.start instanceof Date&&ctx.sunrise&&ctx.sunset){const t=req.start.getTime(),end=t+(req.durMin||0)*60000;night=t<ctx.sunrise.getTime()||end>ctx.sunset.getTime()}
+  if(night)warnings.push("Part of this flight is outside daylight (night operation): you need anti-collision lights visible for 3 statute miles and current night training.");
+  return {missing,errors,warnings,fc,night,ok:!missing.length&&!errors.length};
+}
+/* Authorization coverage: GO only when the number, approved altitude and window all cover the flight. */
+function authState(a,plan,now){
+  if(!a||String(a.num||"").trim().length<6)return {state:"none"};
+  const num=String(a.num).trim().toUpperCase();
+  if(!(a.alt>0)||!(a.to instanceof Date)||isNaN(a.to))return {state:"incomplete",num};
+  const from=a.from instanceof Date&&!isNaN(a.from)?a.from:null;
+  if(a.to.getTime()<=now.getTime())return {state:"expired",num,alt:a.alt,from,to:a.to};
+  const s=plan&&plan.start instanceof Date&&!isNaN(plan.start)?plan.start:now,e=new Date(s.getTime()+((plan&&plan.durMin)||0)*60000);
+  if((from&&s<from)||e>a.to)return {state:"window",num,alt:a.alt,from,to:a.to};
+  if(plan&&plan.alt>0&&a.alt<plan.alt)return {state:"low",num,alt:a.alt,planned:plan.alt,from,to:a.to};
+  return {state:"ok",num,alt:a.alt,from,to:a.to};
+}
+
+if(typeof module!=="undefined")module.exports={explainStatus,validateRequest,authState,niceAptName,AIRPORTS,PRESETS,distMi,bearing,compass,around,approxAir,sunTimes,decodeMetar,decodeTaf,sampleWx,flightCat,splitMetars,splitTafs,stationOf,dms,CHART,NM,RING,ringInfo};
