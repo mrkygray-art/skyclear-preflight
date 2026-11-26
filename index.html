@@ -214,6 +214,14 @@ table.bd{width:calc(100% - 32px);margin:2px 16px 4px;border-collapse:collapse;fo
 .lnow.ok{border-color:var(--go);background:rgba(63,207,142,.08)}.lnow.ok>b{color:var(--go)}
 .lnow span{color:var(--muted);font-size:14px}.lnow span b{color:var(--ink)}
 .lsmall{font-size:13px;padding:0 16px 12px}
+.howlist{list-style:none;margin:0;padding:4px 16px 4px}
+.howlist li{padding:10px 0;border-top:1px solid var(--line)}.howlist li:first-child{border-top:0}
+.howh{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}.howh b{font-size:15px}
+.howlist p{margin:4px 0 0;color:var(--muted);font-size:14px}
+.hst{font:600 11.5px var(--mono);padding:1px 7px;border-radius:999px;border:1px solid}
+.hst-ok{color:var(--go);border-color:var(--go)}.hst-warn{color:var(--warn);border-color:var(--warn)}.hst-bad{color:var(--stop);border-color:var(--stop)}
+.hst-wait,.hst-info{color:var(--muted);border-color:var(--line)}
+.howfoot{margin:0;padding:10px 16px 14px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
 .flysrc{display:block;font-size:11px;font-family:var(--mono);color:var(--muted);margin-top:2px;letter-spacing:0;text-transform:none}
 .flyup.ceil-unk .flysrc{color:var(--warn)}
 .ceillegend[hidden]{display:none}.ceillegend span i{opacity:.85;border-radius:2px}.ceillegend .cl-old{color:var(--warn);font-weight:600}
@@ -846,7 +854,7 @@ function render(){
   const savedNote=ceilNotes(CS0).length&&CS0.k!=="unk"?`<p class="altwarn">${esc(ceilNotes(CS0).join(" "))}</p>`:"";
   const altNote0=CS0.k==="zero"?`<p class="altwarn zero">No automatic LAANC here: further coordination or waiver needed. The FAA LAANC grid is 0 ft at this spot.</p>`:CS0.k==="nogrid"?`<p class="altwarn">No UAS Facility Map grid here, inside controlled airspace: LAANC can't approve this spot automatically. Use an FAA authorization from DroneZone; do not assume 400 ft.</p>`:CS0.k==="unk"?`<p class="altwarn">Ceiling not confirmed. The FAA data could not be loaded${esc(faaWhy())}. Do not assume 400 ft; use the altitude in your LAANC approval, or press Refresh.${CS0.sv&&CS0.sv.k==="outside"?" This spot is outside the saved FAA data area, so there is no fallback.":""}</p>`:"";
   const altl=`<div class="altline"><div class="flyup${flyCls}"><span>Fly up to</span><b>${flyTxt}</b>${flySrc?`<small class="flysrc">${esc(flySrc)}</small>`:""}</div><div><span>Equals</span><b>${ge0.ft==null||cap0==null?"? ft MSL":(ge0.ft+cap0)+" ft MSL"}</b></div><div><span>Ground here</span><b>${ge0.ft==null?"?":ge0.ft} ft MSL</b></div><div class="authl ${controlled?"need":"none"}"><span>Authorization</span><b>${controlled?(S.laanc?"LAANC "+esc(S.laanc.toUpperCase()):"LAANC needed"):"None needed"}</b></div></div>${altNote0}${savedNote}`;
-  laancNow(loading,controlled,cap0,gridOk,ge0,CS0);resWxLink(D);
+  laancNow(loading,controlled,cap0,gridOk,ge0,CS0);resWxLink(D);howUpdate();
   $("#banner").innerHTML=loading?`<div class="banner b-info"><div class="big">Scanning…</div><p>Reading position, airspace and weather.</p></div>`:`<div class="banner b-${ov.k}"><div class="big">${ov.t}</div><p>${esc(ov.d)}</p></div>${altl}`;
   $("#badge").textContent=S.wx.mode==="live"?"Live weather":S.wx.mode==="loading"?"Loading":"Preview · sample weather";
   $("#badge").className="badge "+(S.wx.mode==="live"?"ok":"");
@@ -1336,6 +1344,49 @@ function laancHTML(){
   </ul><p class="note">Contact details were checked on each company's website on Nov 25, 2026. SkyClear is not affiliated with Aloft or Airspace Link.</p></div></section>`;
 }
 
+/* ---- Resources: where SkyClear gets its information (plain language, with a live status for this visit) ---- */
+function howHTML(){
+  const st=(k,t)=>`<span class="hst hst-${k}">${esc(t)}</span>`;
+  const L=S.loc,wx=S.wx.mode,F=S.faa,T=S.tfr||{state:"none"};
+  const savedOK=SAVED&&!SAVED.err,savedOld=(savedAgeDays()||0)>SAVED_MAX_DAYS;
+  const items=[
+   ["Your location",
+    L.src==="gps"?st("ok","Phone GPS, ±"+Math.round(L.acc||0)+" m"):L.src==="address"?st("ok","Address lookup"):L.pin?st("ok","Dropped pin"):st("info","Set by you"),
+    "SkyClear asks your phone for its GPS position. You can also type an address (looked up with OpenStreetMap, or the US Census Bureau as a backup), drop a pin on the map, or pick a preset."],
+   ["Weather (METAR and TAF)",
+    wx==="live"?st("ok","Working · "+tfmt(S.wx.at)):wx==="loading"?st("wait","Loading"):st("bad","Not reachable · showing SAMPLE"),
+    "Live airport weather reports and forecasts from the National Weather Service's Aviation Weather Center (aviationweather.gov), for the 3 nearest weather stations. Each report shows how old it is. If the weather service can't be reached, SkyClear shows clearly labeled SAMPLE text instead, never old weather passed off as live."],
+   ["Airspace and the LAANC ceiling",
+    F.state==="none"?st("wait","Loading"):F.state==="live"&&!F.gridErr?st("ok",F.viaRelay?"Working (backup route)":"Working · live FAA data"):savedOK?st("warn","FAA not reachable · using saved FAA data"):st("bad","Not reachable"),
+    "Whether you're in controlled airspace, and how high LAANC allows you to fly there, come live from the FAA's own airspace and UAS Facility Map data. If the FAA website isn't working, SkyClear uses a saved copy of the FAA's UAS Facility Map ceilings as a backup, shown in amber with its date so you know to confirm it in your LAANC app."],
+   ["Saved FAA ceiling backup",
+    savedOK?(savedOld?st("warn","Older than "+SAVED_MAX_DAYS+" days · "+SAVED.effTxt):st("ok","Ready · dated "+SAVED.effTxt)):SAVED&&SAVED.err?st("bad","Not loaded"):st("wait","Loading"),
+    "A copy of the FAA ceiling grid for California, western Nevada and the edges of Arizona and Oregon, kept inside SkyClear (and on your phone for offline use). It is also what the \"Ceiling grid\" map layer shows. When both are available, SkyClear compares them and uses the lower ceiling."],
+   ["Temporary flight restrictions (TFRs)",
+    T.state==="live"?st("ok","Working · "+T.total+" TFRs checked"):T.state==="error"?st("bad","Not reachable"):st("wait","Loading"),
+    "Checked live against the FAA's TFR list (tfr.faa.gov) for your spot and 5 miles around it. If the FAA list can't be reached, the TFR check says \"Not checked\"."],
+   ["NOTAMs",
+    st("info","Not checked by SkyClear"),
+    "Reading NOTAMs needs an FAA access key, so SkyClear doesn't check them. Use the FAA NOTAM Search link above before you fly."],
+   ["Airports and radio frequencies",
+    st("ok","Built in · FAA data effective "+(typeof NASR_EFF!=="undefined"?NASR_EFF:"n/a")),
+    "Airport names, classes, tower and CTAF frequencies and weather stations come from the FAA's official airport database, which the FAA updates every 28 days. Some Los Angeles airports use the frequencies printed on the sectional chart."],
+   ["Charts on the map",
+    st("ok","Built in · LA and Las Vegas valid "+CHART.from+" to "+CHART.to),
+    "The FAA's Los Angeles, San Francisco and Las Vegas sectional charts and the San Diego terminal chart, on top of an Esri street map. The Los Angeles and Las Vegas charts are the current FAA edition; the San Francisco and San Diego charts come from earlier FAA chart files."],
+   ["Ground elevation and place name",
+    S.elev&&S.elev.at?st("ok","Working"):L.src==="preset"&&L.presetElev!=null?st("info","Preset value"):st("wait","Loading"),
+    "Ground height comes from the US Geological Survey, and the nearest town name from the National Weather Service."],
+   ["Sunrise and sunset",
+    st("ok","Calculated on your device"),
+    "Worked out on your device from your position and the date; nothing is looked up."],
+  ];
+  return `<section class="grp" id="res-how"><h2>Where SkyClear gets its information<small>status for this visit</small></h2>
+   <ul class="howlist">${items.map(([h,s,d])=>`<li><div class="howh"><b>${esc(h)}</b>${s}</div><p>${esc(d)}</p></li>`).join("")}</ul>
+   <p class="howfoot">When something can't be checked, SkyClear says so in amber instead of guessing. To look things up, SkyClear sends your map position to these services. Your pilot and drone details stay on your device. There are no accounts and no tracking.</p></section>`;
+}
+function howUpdate(){const el=$("#res-how-wrap");if(el)el.innerHTML=howHTML()}
+
 /* ---- Resources tab ---- */
 // Every URL and phone number below was checked on 2026-11-25 (FAA UAS Support Center number and
 // email from faa.gov/uas/contact_us; NOTAM Search is the link on the FAA's own NOTAM page).
@@ -1358,6 +1409,7 @@ function resHTML(){
    <a class="qk" id="qk-wx" href="${RES.metar}" target="_blank" rel="noopener"><b>Weather</b><small id="qk-wx-ids">METARs: ${RES_METAR_IDS.replace(/,/g,", ")}</small></a>
    <a class="qk" href="${RES.parks}" target="_blank" rel="noopener"><b>Launch Site Rules</b><small>California State Parks drone rules</small></a>
   </nav>
+  <div id="res-how-wrap"></div>
   ${sec("res-airspace","Airspace and authorization",[
     row(ext(aloft.web[1],"Aloft Air Control"),"Airspace checks and LAANC authorization. Step-by-step guide on the <a href=\"#laanc\">LAANC tab</a>."),
     row(ext(airhub.web[1],"AirHub Portal (Airspace Link)"),"Airspace checks and authorization. Step-by-step guide on the <a href=\"#laanc\">LAANC tab</a>."),
