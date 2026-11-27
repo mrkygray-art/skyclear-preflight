@@ -1,0 +1,2 @@
+<?xml version="1.0"?>
+<XNOTAM-Update><Group><Add><Not><txtLocalName>Broken sample (test only)</txtLocalName><TFRAreaGroup><aseTFRArea><txtName>Area A</txtName></aseTFRArea><abdMergedArea><Avx><geoLat>not-a-number</geoLat><geoLong>???</geoLong></Avx></abdMergedArea></TFRAreaGroup></Not></Add></Group></XNOTAM-Update>

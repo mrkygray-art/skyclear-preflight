@@ -286,6 +286,9 @@ function explainStatus(st){
     if(st.auth&&st.auth.state==="ok")why.push("Your LAANC authorization "+st.auth.num+" covers this flight. Fly no higher than "+st.auth.alt+" ft AGL"+(g!=null?" ("+(g+st.auth.alt)+" ft MSL)":"")+", and land by "+fmtTimeLocal(st.auth.to)+".");
     else if(c.ft!=null)why.push("No FAA airspace permission is needed here. Stay at or below "+ceilPhrase(c.ft,g)+".");
   }
+  // TFR within 5 miles (TFR import brief): named in the banner unless it is already the NO-GO reason
+  const tn=st.tfrNear;
+  if(tn&&!(k==="stop"&&(st.fails||[]).some(x=>x.id==="tfr")))why.push(tn.inside?(tn.above?"You are under a temporary flight restriction (TFR), "+tn.name+", that starts above drone altitude. Check its limits on tfr.faa.gov.":"You are inside a temporary flight restriction (TFR) area, "+tn.name+", that is not active during your planned flight. Check its times on tfr.faa.gov."):"A temporary flight restriction (TFR), "+tn.name+", is "+tn.mi+" miles away. Stay out of it.");
   // Pilot tab fix button (Pilot tab brief section 4): LAANC first when that is the hold, then missing profile items
   const miss=st.missing||{};
   const laancHold=k==="hold"&&(!st.auth||["none","incomplete","expired","window","low"].includes(st.auth.state));

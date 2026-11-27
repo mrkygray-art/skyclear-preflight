@@ -154,6 +154,16 @@ t("fixLink: missing certificate, then registration, then Remote ID, with a why s
 t("fixLink: none on NO-GO (the blocking reason comes first)", () => {
   assert.equal(explainStatus({ ...base, ov: { k: "stop", t: "No-go", d: "x" }, fails: [{ id: "tfr", label: "TFR", value: "Inside" }], missing: { cert: true } }).fixLink, null);
 });
+t("banner names a TFR within 5 miles; not when it is already the NO-GO reason", () => {
+  const near = { name: "2026 Disneyland", mi: 1.49, inside: false };
+  const r = explainStatus({ ...base, ov: { k: "hold", t: "Hold", d: "x" }, auth: { state: "none" }, tfrNear: near });
+  assert.match(r.why, /A temporary flight restriction \(TFR\), 2026 Disneyland, is 1\.49 miles away\. Stay out of it\./);
+  const go = explainStatus({ ...base, controlled: false, ov: { k: "warn", t: "Go with cautions", d: "x" }, cautions: [], auth: { state: "none" }, tfrNear: near });
+  assert.match(go.why, /1\.49 miles away/);
+  const stop = explainStatus({ ...base, ov: { k: "stop", t: "No-go", d: "x" }, fails: [{ id: "tfr", label: "TFR", value: "Inside" }], tfrNear: near });
+  assert.doesNotMatch(stop.why, /miles away/);
+  assert.equal(explainStatus({ ...base, ov: { k: "hold", t: "Hold", d: "x" }, auth: { state: "none" } }).why.includes("TFR"), false);
+});
 t("checklist is a Pilot tab section in routing", () => assert.deepEqual(parseHash("#pilot:checklist"), { tab: "pilot", section: "checklist" }));
 t("no two top-level functions in the app share a name (the clash that emptied the Requirements tab)", () => {
   const fs = require("fs"), path = require("path");

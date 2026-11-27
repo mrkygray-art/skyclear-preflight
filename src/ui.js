@@ -17,7 +17,7 @@ const MANUAL=[
   ["fw","Firmware, SD card, compass and GPS lock confirmed","Wait for a solid satellite count before launch."],
   ["rth","Return-to-home altitude set above obstacles, failsafe checked",""]]},
  {g:"Operation",items:[
-  ["tfr","TFRs checked for this location and time","SkyClear checks FAA TFRs within 5 miles (see Airspace on the Pre-flight tab). Recheck tfr.faa.gov or the FAA B4UFLY map for your exact flight time."],
+  ["tfr","TFRs checked for this location and time","SkyClear checks FAA TFRs within 10 miles for your planned time (see Airspace on the Pre-flight tab). The FAA data may be incomplete: recheck tfr.faa.gov or B4UFLY."],
   ["sua","Restricted, warning, MOA and prohibited areas checked on the chart","Shown shaded on the sectional. None are modeled in this preview."],
   ["notam","NOTAMs reviewed for the area and time","Use the FAA NOTAM search for the launch point."],
   ["area","Launch area surveyed for obstacles, wires and people",""],
@@ -151,36 +151,83 @@ function ceilNotes(CS){
   if(CS.k==="unk"&&CS.sv&&CS.sv.k==="outside")n.push("This spot is outside the saved FAA data area, so there is no fallback.");
   return n;
 }
-/* TFRs (roadmap 3): FAA tfr.faa.gov via /api/tfr. Pass only when the feed was reached and no TFR
-   is within TFR_RADIUS_MI; caution when unreachable, nearby, upcoming, or above the drone's altitude;
-   fail when inside an active TFR that reaches down to drone altitude.
+/* TFRs (TFR import brief, 2026-11-26): /api/tfr returns FAA TFRs within TFR_AWARE_MI of the spot, per area
+   with distance, altitude limits and whether it is active during the planned flight window.
+   - NO-GO: inside an area active during the flight that reaches down to drone altitude (400 ft AGL).
+   - Caution: any TFR within TFR_NOTE_MI (also named in the status banner), inside one that starts later or
+     only above 400 ft, data older than TFR_STALE_MIN or the last fetch failed, or no data at all.
+   - Within TFR_AWARE_MI but beyond TFR_NOTE_MI: listed so the pilot knows ("No TFRs found in our data
+     within 5 mi · 1 within 10 mi"). Never a plain "all clear".
    NOTAMs: the FAA NOTAM API needs a registered key, so they are NOT checked; the row says so. */
-const TFR_RADIUS_MI=5;
-const altTxt=l=>l?(l.val===0&&l.ref==="AGL"?"surface":l.val.toLocaleString()+" ft "+l.ref):"not listed";
-const tfrWhen=t=>{const d=x=>zfmt(new Date(x))+" "+new Date(x).toLocaleDateString([], {month:"short",day:"numeric"});
-  if(!t.effective&&!t.expires)return "no end date listed (until further notice)";
-  return [t.effective?"from "+d(t.effective):"",t.expires?"until "+d(t.expires):"until further notice"].filter(Boolean).join(" ")};
-function tfrEval(t,ge){
-  const now=Date.now(),eff=t.effective?Date.parse(t.effective):null,exp=t.expires?Date.parse(t.expires):null;
-  const active=(eff==null||eff<=now)&&(exp==null||exp>now),upcoming=eff!=null&&eff>now;
-  // Does the TFR reach down to drone altitude (400 ft AGL)? MSL limits need ground elevation.
-  let low=null;if(t.lower){low=t.lower.ref==="AGL"?t.lower.val:t.lower.ref==="MSL"&&ge.ft!=null?t.lower.val-ge.ft:null}
-  const above=low!=null&&low>400;
-  return {active,upcoming,above,ended:exp!=null&&exp<=now};
+const TFR_AWARE_MI=10,TFR_NOTE_MI=5,TFR_STALE_MIN=15;
+const altTxt=l=>l?(l.ft===0&&l.ref==="AGL"?"surface":l.ft.toLocaleString()+" ft "+(l.ref==="unknown"?"(reference not listed)":l.ref)):"not listed";
+// UTC time with its UTC date, then local time with its local date (they can differ by a day)
+const tdate=x=>{const d=new Date(x);return zfmt(d)+" "+d.toLocaleDateString([], {month:"short",day:"numeric",timeZone:"UTC"})+" ("+d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})+" "+d.toLocaleDateString([], {month:"short",day:"numeric"})+" local)"};
+function areaWhen(a){const s=a.schedule;if(!s)return "times not listed";
+  const span=(s.from?"from "+tdate(s.from)+" ":"")+(s.to?"until "+tdate(s.to):"until further notice");
+  return (s.daily?"daily "+s.daily.start+"–"+s.daily.end+"Z, ":"")+span}
+function areaLowAgl(a,ge){const l=a.lower;if(!l)return 0;if(l.ref==="AGL")return l.ft;if(l.ref==="MSL"&&ge.ft!=null)return l.ft-ge.ft;return 0} // unknown = assume surface (cautious)
+const tfrAgeMin=T=>T&&T.fetchedAt?Math.max(0,Math.round((Date.now()-T.fetchedAt.getTime())/60000)):null;
+function tfrUpdated(T){const m=tfrAgeMin(T);return m==null?"":"Updated "+(m<1?"just now":m+" min ago")}
+function tfrIsStale(T){return T&&(T.stale||T.error||(tfrAgeMin(T)||0)>TFR_STALE_MIN)}
+function tfrName(t){return (t.name||String(t.description||"").trim()||"TFR "+t.notamId)}
+// Per-TFR summary for the flight window
+function tfrSummary(t,ge){
+  const act=t.areas.filter(a=>a.activeDuringFlight),insideAct=act.filter(a=>a.inside),reach=insideAct.filter(a=>areaLowAgl(a,ge)<=400);
+  const a0=t.areas.slice().sort((x,y)=>x.mi-y.mi)[0];
+  return {t,mi:t.mi,inside:t.inside,blocking:reach.length>0,insideNotActive:t.inside&&!insideAct.length,insideAbove:insideAct.length>0&&!reach.length,
+    desc:tfrName(t)+" ("+String(t.type||"TFR").toLowerCase()+", "+altTxt(a0.lower)+" to "+altTxt(a0.upper)+", "+areaWhen(a0)+(t.areas.length>1?"; "+t.areas.length+" areas":"")+")"};
 }
 function tfrCheck(ge){
   const T=S.tfr;
   if(!T||T.state==="none")return {s:"caution",v:"Checking FAA TFRs…",d:""};
-  if(T.state==="error")return {s:"caution",v:"Not checked",d:"The FAA TFR feed could not be reached ("+T.reason+"). Check tfr.faa.gov before flying."};
-  const nat=T.noShape.length?" Also "+T.noShape.length+" nationwide or DC TFRs have no map shape, so SkyClear can't place them: read them on tfr.faa.gov.":"";
-  const inside=T.near.filter(t=>t.inside),near=T.near.filter(t=>!t.inside);
-  const desc=t=>(t.name||t.title)+" ("+t.type.toLowerCase()+", "+altTxt(t.lower)+" to "+altTxt(t.upper)+", "+tfrWhen(t)+(t.detail===false?"; times and altitudes not loaded":"")+")";
-  for(const t of inside){const e=tfrEval(t,ge);
-    if(e.active&&!e.above&&!e.ended)return {s:"fail",v:"Inside an active TFR",d:"You are inside "+desc(t)+". Do not fly unless the TFR allows your operation."+nat};}
-  if(inside.length){const t=inside[0],e=tfrEval(t,ge);
-    return {s:"caution",v:e.upcoming?"Inside a TFR that starts later":e.above?"Under a TFR (starts above 400 ft AGL)":"Inside a TFR area",d:"You are inside "+desc(t)+". Check the times and altitudes on tfr.faa.gov."+nat};}
-  if(near.length)return {s:"caution",v:"TFR "+near[0].mi+" mi away",d:"Within "+TFR_RADIUS_MI+" mi: "+near.map(t=>desc(t)+", "+t.mi+" mi").join("; ")+". Stay clear and check tfr.faa.gov."+nat};
-  return {s:"pass",v:"None within "+TFR_RADIUS_MI+" mi",d:"Checked "+T.total+" active and upcoming FAA TFRs; none covers this spot or comes within "+TFR_RADIUS_MI+" mi."+nat};
+  if(T.state==="error")return {s:"caution",v:"Not checked",d:"The FAA TFR data could not be loaded ("+T.reason+"). Check tfr.faa.gov or B4UFLY before flying."};
+  const sum=T.matches.map(t=>tfrSummary(t,ge)),age=tfrUpdated(T),stale=tfrIsStale(T);
+  const staleTxt=stale?" WARNING: this TFR data is "+(T.error?"not current (the last FAA fetch failed: "+T.error+")":"more than "+TFR_STALE_MIN+" minutes old")+".":"";
+  const unk=T.unknownArea.length?" "+T.unknownArea.length+" nationwide or special TFRs have no mapped area, so SkyClear can't place them; read them on tfr.faa.gov.":"";
+  const far=sum.filter(x=>!x.inside&&x.mi>TFR_NOTE_MI),near=sum.filter(x=>!x.inside&&x.mi<=TFR_NOTE_MI);
+  const farTxt=far.length?" Further out, within "+TFR_AWARE_MI+" mi: "+far.map(x=>x.desc+", "+x.mi+" mi").join("; ")+".":"";
+  const tail=" "+age+"."+staleTxt+unk;
+  const b=sum.find(x=>x.blocking);
+  if(b)return {s:"fail",v:"Inside an active TFR",d:"You are inside "+b.desc+" during your planned flight. Do not fly unless the TFR allows your operation."+farTxt+tail};
+  const ins=sum.find(x=>x.inside);
+  if(ins){const nx=ins.t.areas.map(a=>a.nextStart).filter(Boolean).sort()[0];
+    return {s:"caution",v:ins.insideAbove?"Under a TFR (starts above 400 ft AGL)":"Inside a TFR that is not active during your flight",d:"You are inside "+ins.desc+"."+(ins.insideNotActive&&nx?" It next starts "+tdate(nx)+".":"")+" Check the times and altitudes on tfr.faa.gov."+farTxt+tail};}
+  if(near.length)return {s:"caution",v:"TFR "+near[0].mi+" mi away",d:"Within "+TFR_NOTE_MI+" mi: "+near.map(x=>x.desc+", "+x.mi+" mi").join("; ")+". Stay clear."+farTxt+tail};
+  const v="No TFRs found in our data within "+TFR_NOTE_MI+" mi"+(far.length?" · "+far.length+" within "+TFR_AWARE_MI+" mi ("+far[0].mi+" mi)":"");
+  return {s:stale?"caution":"pass",v,d:"Checked "+T.total+" active and upcoming FAA TFR"+(T.total===1?"":"s")+" for your planned flight time."+farTxt+tail};
+}
+// For the status banner (explainStatus): nearest TFR within TFR_NOTE_MI that is not already the NO-GO reason
+function tfrBannerNote(){
+  const T=S.tfr;if(!T||T.state!=="live")return null;const ge=groundElev();
+  const s=T.matches.map(t=>tfrSummary(t,ge)).filter(x=>!x.blocking&&(x.inside||x.mi<=TFR_NOTE_MI)).sort((a,b)=>a.mi-b.mi)[0];
+  return s?{name:tfrName(s.t),mi:s.mi,inside:s.inside,above:s.insideAbove}:null;
+}
+function tfrQuery(L){
+  const pl=reqPlan(ceilState(LAST.controlled)),r5=d=>new Date(Math.floor(d.getTime()/300000)*300000);
+  let from=r5(pl.start),to=new Date(Math.max(from.getTime()+300000,pl.start.getTime()+Math.max(pl.durMin||60,5)*60000));
+  if(from.getTime()<Date.now()-3600000)from=r5(new Date());
+  return "/api/tfr?lat="+L.lat.toFixed(4)+"&lon="+L.lon.toFixed(4)+"&r="+TFR_AWARE_MI+"&from="+from.toISOString().slice(0,16)+":00Z&to="+to.toISOString().slice(0,16)+":00Z";
+}
+let TFR_TOK=0;
+async function loadTfr(){
+  const L=S.loc,tok=++TFR_TOK;
+  try{
+    const ac=new AbortController(),to=setTimeout(()=>ac.abort(),25000);let r,j;
+    try{r=await fetch(tfrQuery(L),{signal:ac.signal});j=await r.json().catch(()=>null)}finally{clearTimeout(to)}
+    if(tok!==TFR_TOK)return;
+    if(!r.ok||!j||!j.checked||!Array.isArray(j.matches))throw new Error(j&&j.error||"server HTTP "+r.status);
+    S.tfr={state:"live",at:new Date(),fetchedAt:j.fetchedAt?new Date(j.fetchedAt):null,stale:!!j.stale,error:j.error||null,total:j.total,matches:j.matches,unknownArea:j.unknownArea||[],disclaimer:j.disclaimer||""};
+  }catch(e){if(tok!==TFR_TOK)return;S.tfr={state:"error",at:new Date(),reason:e&&e.name==="AbortError"?"timed out":String(e&&e.message||e)}}
+  render();mapUpdate(false);
+}
+let TFR_DEB=0;function tfrWindowChanged(){clearTimeout(TFR_DEB);TFR_DEB=setTimeout(loadTfr,700)}
+const TFR_DISCLAIMER="TFR data from tfr.faa.gov may be incomplete; the FAA says not to rely on it alone for flight planning.";
+function tfrLinksHTML(){
+  const T=S.tfr,stale=T&&T.state==="live"&&tfrIsStale(T);
+  return `<div class="tfrlinks"><p>${T&&T.state==="live"?`<b class="${stale?"tfr-stale":""}">TFRs: ${esc(tfrUpdated(T))}${stale?" · STALE":""}</b> · `:T&&T.state==="error"?`<b class="tfr-stale">TFRs not checked</b> · `:""}${esc(TFR_DISCLAIMER)} Check before you fly:
+   <a href="https://tfr.faa.gov/" target="_blank" rel="noopener">FAA TFR list ↗</a> · <a href="https://notams.aim.faa.gov/notamSearch/" target="_blank" rel="noopener">FAA NOTAM Search ↗</a> · <a href="https://www.faa.gov/uas/getting_started/b4ufly" target="_blank" rel="noopener">B4UFLY ↗</a> · <a href="tel:+18009927433">1-800-WX-BRIEF</a></p>
+   ${T&&T.matches&&T.matches.length?`<p>TFRs within ${TFR_AWARE_MI} mi: ${T.matches.map(t=>`<a href="${esc(t.link)}" target="_blank" rel="noopener">${esc(t.notamId)} ${esc(tfrName(t))} (${t.inside?"you are inside":t.mi+" mi"}) ↗</a>`).join(" · ")}</p>`:""}</div>`;
 }
 function buildChecks(D){
   const C=[];const add=(group,id,label,status,value,detail,src)=>C.push({group,id,label,status,value,detail:detail||"",src:src||""});
@@ -215,7 +262,7 @@ function buildChecks(D){
     add("Airspace","laanc","Authorization (LAANC)",have?"pass":"hold",have?"Auth "+au.num+" · up to "+au.alt+" ft until "+fmtTimeLocal(au.to):au.state==="expired"?"Expired at "+fmtTimeLocal(au.to):au.state==="incomplete"?"Add approved altitude and time":au.state==="window"?"Doesn't cover the flight time":au.state==="low"?"Approved altitude too low":"Needed before launch",
       ((()=>{const c=ceilState(controlled);return c.ft!=null?"Facility-map grid ceiling here: "+c.ft+" ft AGL ("+ceilSrcTxt(c).toLowerCase()+"). ":"Look up the grid ceiling in your LAANC app. "})())+"Request authorization in a LAANC app, then enter the number, approved altitude and time window in the LAANC request section.","FAA UAS Facility Map / LAANC");
   }
-  {const ge1=groundElev(),tc=tfrCheck(ge1);add("Airspace","tfr","TFR (temporary flight restrictions)",tc.s,tc.v,tc.d,S.tfr&&S.tfr.state==="live"?"FAA tfr.faa.gov · live":"FAA tfr.faa.gov");}
+  {const ge1=groundElev(),tc=tfrCheck(ge1);add("Airspace","tfr","TFR (temporary flight restrictions)",tc.s,tc.v,tc.d,S.tfr&&S.tfr.state==="live"?"FAA tfr.faa.gov · "+tfrUpdated(S.tfr).toLowerCase():"FAA tfr.faa.gov");}
   add("Airspace","notam","NOTAMs","caution","Not checked by SkyClear","The FAA NOTAM API needs a registered key, so SkyClear does not read NOTAMs. Search the FAA NOTAM Search for the launch area and nearby airports before flying.","FAA NOTAM Search");
   const near=D.list.filter(a=>a.dist<=3);
   add("Airspace","apt","Airports within 3 mi",near.length&&!controlled?"caution":"pass",near.length?near.map(a=>a.id+" "+fmt1(a.dist)+" mi").join(" · "):"None",near.length?"Manned aircraft may be low and close. "+(controlled?"Your authorization covers the controlled airspace, not the traffic.":"Consider calling the airport operator."):"No charted airports inside the 3 mi ring.","Chart airport list");
@@ -359,7 +406,7 @@ function render(){
     let body="";
     if(g==="Altitude")body+=`<div class="viz"><div>${altViz()}</div><div><div class="l">Height above ground and above sea level</div><p class="d2">The aircraft altitude readout is usually height above the takeoff point. Add ground elevation to compare with MSL charts.</p></div></div>`;
     body+=rows.map(rowHTML).join("");
-    if(g==="Airspace")body+=`<p class="tfrlinks">TFRs and NOTAMs: <a href="https://tfr.faa.gov/" target="_blank" rel="noopener">FAA TFR list ↗</a> · <a href="https://notams.aim.faa.gov/notamSearch/" target="_blank" rel="noopener">FAA NOTAM Search ↗</a>${S.tfr&&S.tfr.near?S.tfr.near.map(t=>` · <a href="${esc(t.link)}" target="_blank" rel="noopener">TFR ${esc(t.id)} ↗</a>`).join(""):""}</p>`;
+    if(g==="Airspace")body+=tfrLinksHTML();
     html+=`<section class="grp"${g==="Airspace"?' id="sec-airspace"':""}><h2>${g==="Location"?"Position and chart":g}<small>${rows.filter(c=>c.status==="pass").length}/${rows.length} clear</small></h2>${body}</section>`;
   });
   const done=MANUAL_IDS.filter(id=>S.manual[id]).length;
@@ -419,7 +466,7 @@ function srcTimes(W){
   return [["LAANC grid used",CSr.ft!=null?CSr.ft+" ft AGL · "+(ceilSrcTxt(CSr)||"FAA"):CSr.k==="nogrid"?"no grid here":"not confirmed"],["LAANC grid (live)",gridTxt],["LAANC grid (saved)",savedLine],["METAR",S.wx.mode==="live"?(oi?"observed "+stamp(oi.at)+" ("+agoTxt(oi.min)+")":"time not reported")+", fetched "+stamp(S.wx.at):S.wx.mode==="loading"?"loading":"SAMPLE, not live"],
     ["Airspace",S.faa.state==="live"?"FAA Class Airspace layer, fetched "+stamp(S.faa.at)+(S.faa.viaRelay?" via SkyClear relay":""):S.faa.state==="error"?"FAA, could not load at "+stamp(S.faa.at)+faaWhy():"loading"],
     ["Ground elevation",S.elev.at?"USGS, fetched "+stamp(S.elev.at):S.loc.presetElev!=null&&S.loc.src==="preset"?"preset value":"not loaded"],
-    ["TFR",S.tfr&&S.tfr.state==="live"?"FAA tfr.faa.gov, "+S.tfr.total+(S.tfr.total===1?" TFR":" TFRs")+" checked, "+(S.tfr.near.length?S.tfr.near.length+" within "+TFR_RADIUS_MI+" mi":"none within "+TFR_RADIUS_MI+" mi")+", fetched "+stamp(S.tfr.at):S.tfr&&S.tfr.state==="error"?"not checked ("+S.tfr.reason+")":"loading"],
+    ["TFR",S.tfr&&S.tfr.state==="live"?"FAA tfr.faa.gov (may be incomplete), "+S.tfr.total+" TFR"+(S.tfr.total===1?"":"s")+" checked, "+(S.tfr.matches.length?S.tfr.matches.length+" within "+TFR_AWARE_MI+" mi":"none found within "+TFR_AWARE_MI+" mi")+", "+tfrUpdated(S.tfr).toLowerCase()+(tfrIsStale(S.tfr)?" (STALE)":""):S.tfr&&S.tfr.state==="error"?"not checked ("+S.tfr.reason+")":"loading"],
     ["NOTAMs","not checked by SkyClear (FAA NOTAM API needs a key)"]];
 }
 function posSrc(L){return L.src==="gps"?"GPS ±"+Math.round(L.acc)+" m":L.pin?(L.pinOk?"pin, confirmed":"pin, not confirmed"):L.src}
@@ -500,13 +547,7 @@ async function loadAll(){
       }
     }catch(e){if(tok!==S.token)return;S.faa={state:"error",surface:[],grid:null,cells:[],reason:String(e&&e.message||e),at:new Date()};render()}
   })());
-  jobs.push((async()=>{
-    try{const j=await fetchJson("/api/tfr?lat="+L.lat.toFixed(5)+"&lon="+L.lon.toFixed(5)+"&r="+TFR_RADIUS_MI,20000);if(tok!==S.token)return;
-      if(!j||!j.checked||!Array.isArray(j.near))throw new Error(j&&j.error||"unexpected response");
-      S.tfr={state:"live",at:new Date(),fetched:j.fetched?new Date(j.fetched):new Date(),total:j.total,near:j.near,noShape:j.noShape||[]};
-    }catch(e){if(tok!==S.token)return;S.tfr={state:"error",at:new Date(),reason:e&&e.name==="AbortError"?"timed out":String(e&&e.message||e).replace(/^HTTP /,"server HTTP ")}}
-    render();mapUpdate(false);
-  })());
+  loadTfr();
   await Promise.all(jobs);
 }
 function syncPreset(){const sel=$("#preset");if(!sel)return;const x=S.loc.src==="preset"&&PRESETS.find(z=>z.name===S.loc.label);sel.value=x?x.k:"";}
@@ -571,8 +612,8 @@ function mapUpdate(fit){
       L.marker([ap.lat,ap.lon],{interactive:true,keyboard:false,icon:L.divIcon({className:"apt",html:'<span class="apd"></span><span class="apl">'+esc(ap.id)+"</span>",iconSize:[16,16],iconAnchor:[8,8]})}).bindTooltip(esc(ap.id)+" · "+esc(ap.name)+(ap.cls?" · Class "+ap.cls:" · no tower")+" · "+fmt1(ap.dist)+" mi",{direction:"top"}).addTo(MAPL)}
   });
   // TFRs near the position (from the FAA TFR shapes)
-  if(S.tfr&&S.tfr.near)S.tfr.near.forEach(t=>{if(!t.geometry)return;
-    L.geoJSON(t.geometry,{style:{color:"#ff3b3b",weight:2,dashArray:"8 4",fillColor:"#ff3b3b",fillOpacity:.12},interactive:true}).bindTooltip("TFR "+esc(t.id)+" · "+esc(t.name||t.title)+" · "+esc(altTxt(t.lower))+" to "+esc(altTxt(t.upper)),{sticky:true}).addTo(MAPL)});
+  if(S.tfr&&S.tfr.matches)S.tfr.matches.forEach(t=>t.areas.forEach(a=>{if(!a.polygon)return;const close=a.inside||a.mi<=TFR_NOTE_MI,col=close?"#ff3b3b":"#ff9a3b";
+    L.geoJSON(a.polygon,{style:{color:col,weight:2,dashArray:"8 4",fillColor:col,fillOpacity:close?.12:.06},interactive:true}).bindTooltip("TFR "+esc(t.notamId)+" · "+esc(tfrName(t))+(a.name?" · "+esc(a.name):"")+" · "+esc(altTxt(a.lower))+" to "+esc(altTxt(a.upper))+" · "+(a.inside?"you are inside":a.mi+" mi")+(a.activeDuringFlight?"":" · not active during your flight"),{sticky:true}).addTo(MAPL)}));
   // search radius
   L.circle(ll,{radius:S.radius*MI,color:"#0a7d4d",weight:2,dashArray:"2 6",fill:false,interactive:false}).addTo(MAPL);
   if(S.loc.acc)L.circle(ll,{radius:S.loc.acc,color:"#1f6fe5",weight:1,fillColor:"#1f6fe5",fillOpacity:.15,interactive:false}).addTo(MAPL);
@@ -808,7 +849,7 @@ function statusState(D,C,ov,controlled){
   const CS=ceilState(controlled),ge=groundElev();
   return {ov,controlled,fails:C.filter(c=>c.status==="fail"),cautions:C.filter(c=>c.status==="caution"),
     classes:[...new Set((S.faa.surface||[]).map(s=>s.cls))].length?[...new Set((S.faa.surface||[]).map(s=>s.cls))]:approxAir(D.list).map(h=>h.cls),
-    approx:S.faa.state!=="live",missing:{cert:!String(S.cert||"").trim(),reg:!String(S.reg||"").trim(),rid:!profileDone().rid},airports:causeAirports(D),ceil:{k:CS.k,ft:CS.ft,src:CS.src,eff:SAVED&&SAVED.effTxt||""},groundFt:ge.ft,auth:authNow(CS),
+    approx:S.faa.state!=="live",tfrNear:tfrBannerNote(),missing:{cert:!String(S.cert||"").trim(),reg:!String(S.reg||"").trim(),rid:!profileDone().rid},airports:causeAirports(D),ceil:{k:CS.k,ft:CS.ft,src:CS.src,eff:SAVED&&SAVED.effTxt||""},groundFt:ge.ft,auth:authNow(CS),
     left:MANUAL_IDS.filter(id=>!S.manual[id]).length,now:new Date()};
 }
 function wxSummary(D){const W=currentWx(D);if(!W||!W.m)return "";const m=W.m,oi=obsInfo(W.st.icao);
@@ -1036,8 +1077,8 @@ function howHTML(){
     savedOK?(savedOld?st("warn","Older than "+SAVED_MAX_DAYS+" days · "+SAVED.effTxt):st("ok","Ready · dated "+SAVED.effTxt)):SAVED&&SAVED.err?st("bad","Not loaded"):st("wait","Loading"),
     "A copy of the FAA ceiling grid for California, western Nevada and the edges of Arizona and Oregon, kept inside SkyClear (and on your phone for offline use). It is also what the \"Ceiling grid\" map layer shows. When both are available, SkyClear compares them and uses the lower ceiling."],
    ["Temporary flight restrictions (TFRs)",
-    T.state==="live"?st("ok","Working · "+T.total+" TFRs checked"):T.state==="error"?st("bad","Not reachable"):st("wait","Loading"),
-    "Checked live against the FAA's TFR list (tfr.faa.gov) for your spot and 5 miles around it. If the FAA list can't be reached, the TFR check says \"Not checked\"."],
+    T.state==="live"?(tfrIsStale(T)?st("warn","Stale · "+tfrUpdated(T)):st("ok","Working · "+T.total+" TFRs checked · "+tfrUpdated(T).toLowerCase())):T.state==="error"?st("bad","Not reachable"):st("wait","Loading"),
+    "Checked against the FAA's TFR list (tfr.faa.gov) for your planned flight time: inside an active TFR is NO-GO, a TFR within 5 miles is a caution named in the status banner, and any TFR within 10 miles is listed. The FAA's TFR site may be incomplete, so SkyClear says how old the data is, warns when it is more than 15 minutes old, and points you to the official sources."],
    ["NOTAMs",
     st("info","Not checked by SkyClear"),
     "Reading NOTAMs needs an FAA access key, so SkyClear doesn't check them. Use the FAA NOTAM Search link above before you fly."],
@@ -1154,11 +1195,11 @@ document.addEventListener("click",e=>{
 document.addEventListener("change",e=>{if(e.target.matches("input[data-id]")){S.manual[e.target.dataset.id]=e.target.checked;render()}});
 const REQ_IN={reqDurH:"durH",reqDurM:"durM",reqAlt:"alt",reqPurposeOther:"purposeOther"},REQ_CHG={reqStart:"start",reqPurpose:"purpose"};
 document.addEventListener("input",e=>{const id=e.target.id;
-  if(REQ_IN[id]){S.req[REQ_IN[id]]=e.target.value;render();return}
+  if(REQ_IN[id]){S.req[REQ_IN[id]]=e.target.value;render();if(id==="reqDurH"||id==="reqDurM")tfrWindowChanged();return}
   if(id==="reqPhone"||id==="reqEmail"){S[id==="reqPhone"?"phone":"email"]=e.target.value;saveProfile();render();return}
   if(id==="laancAlt"){S.laancAlt=e.target.value;render();return}});
 document.addEventListener("change",e=>{const id=e.target.id;
-  if(REQ_CHG[id]){S.req[REQ_CHG[id]]=e.target.value;render();return}
+  if(REQ_CHG[id]){S.req[REQ_CHG[id]]=e.target.value;render();if(id==="reqStart")tfrWindowChanged();return}
   if(id==="laancFrom"||id==="laancTo"){S[id]=e.target.value;render();return}});
 document.addEventListener("toggle",e=>{if(e.target&&e.target.id==="reqsec")S.reqOpen=e.target.open},true);
 document.addEventListener("click",e=>{

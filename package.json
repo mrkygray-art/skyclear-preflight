@@ -1,1 +1,1 @@
-{ "name": "skyclear-preflight", "private": true, "version": "0.1.0" }
+{"name":"skyclear-preflight","private":true,"version":"0.1.0","dependencies":{"@turf/boolean-point-in-polygon":"^7.4.0","@turf/helpers":"^7.4.0","@turf/point-to-line-distance":"^7.4.0","zod":"^4.6.7"}}
