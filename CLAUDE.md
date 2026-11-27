@@ -9,7 +9,7 @@ Drone pilot pre-flight clearance web app for Ky (Part 107 student, Southern Cali
 - After each task: run the app locally, check the browser console for errors, take a screenshot, then `npx vercel deploy --scope power-quote` (preview). Deploy to production (`npx vercel deploy --prod --scope power-quote`) only after Ky has seen and approved the preview. (Port 8765 is Ky's PC Medic; use another port or open the built file directly.)
 - Commit to git only when Ky asks. No env vars, API keys or analytics unless a task says so and Ky agrees.
 - Ky is a visual learner and a physical-security estimator, not a developer. Explain changes in plain language and show screenshots.
-- Public: SkyClear is on Ky's portfolio (project 16, after PC Medic), Ask Ky and the GitHub profile README, NOT the resume. When a change ships to production, keep those in step. Never put Ky's home city or email in the app default or any public text.
+- Public: SkyClear is on Ky's portfolio (project 6, after SightFlow and before SE Command Center, since 2026-11-27), Ask Ky and the GitHub profile README, NOT the resume. When a change ships to production, keep those in step. Never put Ky's home city or email in the app default or any public text.
 
 ## Rules that never bend
 - Never invent airspace, frequencies, altitudes, ceilings or restrictions. If a source can't be reached or a value is unknown, show "not confirmed / not checked" in amber. Never show green or GO on missing data.
