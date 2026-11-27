@@ -180,6 +180,9 @@ table.bd{width:calc(100% - 32px);margin:2px 16px 4px;border-collapse:collapse;fo
 .psum{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;font-size:15px}.pchk{color:var(--go)}
 .psum button,.pdone button{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 14px;cursor:pointer;color:var(--ink);font-weight:600;min-height:40px}
 .pdone{padding:0 16px 12px;text-align:right}
+.chkbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;padding:10px 16px 4px}.chkbar .pchk-note{margin:0}
+.chkbtns{display:flex;gap:8px}.chkbtns button{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 14px;cursor:pointer;color:var(--ink);font-weight:600;min-height:40px}
+.chkbtns button:hover:not(:disabled){border-color:var(--accent)}.chkbtns button:disabled{opacity:.45;cursor:default}
 .bfix{margin-top:2px;background:var(--accent);color:#04202f;border:0;border-radius:6px;padding:10px 14px;font-weight:700;cursor:pointer;justify-self:start;max-width:100%;min-height:44px}
 .rq-edit{color:var(--accent);font-size:12px;margin-left:6px}
 .precsum{display:none}

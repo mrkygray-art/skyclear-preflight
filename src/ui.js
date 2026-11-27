@@ -17,7 +17,7 @@ const MANUAL=[
   ["fw","Firmware, SD card, compass and GPS lock confirmed","Wait for a solid satellite count before launch."],
   ["rth","Return-to-home altitude set above obstacles, failsafe checked",""]]},
  {g:"Operation",items:[
-  ["tfr","TFRs checked for this location and time","Open tfr.faa.gov or the FAA B4UFLY map. This app does not read TFRs yet."],
+  ["tfr","TFRs checked for this location and time","SkyClear checks FAA TFRs within 5 miles (see Airspace on the Pre-flight tab). Recheck tfr.faa.gov or the FAA B4UFLY map for your exact flight time."],
   ["sua","Restricted, warning, MOA and prohibited areas checked on the chart","Shown shaded on the sectional. None are modeled in this preview."],
   ["notam","NOTAMs reviewed for the area and time","Use the FAA NOTAM search for the launch point."],
   ["area","Launch area surveyed for obstacles, wires and people",""],
@@ -910,7 +910,7 @@ function goTo(tab,section){const h=tabHash(tab,section);if(location.hash===h)sho
 function checklistHTML(){
   const done=MANUAL_IDS.filter(id=>S.manual[id]).length;
   let m=`<section class="grp psec" id="psec-checklist"><h2>Pre-flight checklist<small>${done}/${MANUAL_IDS.length} confirmed</small></h2><div class="bar"><i style="width:${done/MANUAL_IDS.length*100}%"></i></div>
-  <p class="pad muted pchk-note">Confirm these for every flight. They reset when you reload SkyClear.</p>`;
+  <div class="chkbar"><p class="muted pchk-note">Confirm these for every flight. They reset when you reload SkyClear.</p><div class="chkbtns"><button type="button" id="chkall" ${done===MANUAL_IDS.length?"disabled":""}>Select all</button><button type="button" id="chkclear" ${done?"":"disabled"}>Clear all</button></div></div>`;
   MANUAL.forEach(g=>{m+=`<div class="sub">${g.g}</div>`;g.items.forEach(([id,t,s2])=>{m+=`<label class="todo"><input type="checkbox" data-id="${id}" ${S.manual[id]?"checked":""}><span><b>${esc(t)}</b>${s2?`<small>${esc(s2)}</small>`:""}</span></label>`})});
   return m+"</section>";
 }
@@ -1148,6 +1148,8 @@ document.addEventListener("click",e=>{
   const w=e.target.closest("[data-w]");if(w){S.wxSel=+w.dataset.w;render();return}
   if(e.target.closest("#wxrefresh")){loadAll();return}
   if(e.target.closest("#profclear")){clearProfile();return}
+  if(e.target.closest("#chkall")){if(confirm("Tick all "+MANUAL_IDS.length+" checklist items? Only do this if you have actually checked each one."))MANUAL_IDS.forEach(id=>S.manual[id]=true);render();return}
+  if(e.target.closest("#chkclear")){MANUAL_IDS.forEach(id=>S.manual[id]=false);render();return}
 });
 document.addEventListener("change",e=>{if(e.target.matches("input[data-id]")){S.manual[e.target.dataset.id]=e.target.checked;render()}});
 const REQ_IN={reqDurH:"durH",reqDurM:"durM",reqAlt:"alt",reqPurposeOther:"purposeOther"},REQ_CHG={reqStart:"start",reqPurpose:"purpose"};
