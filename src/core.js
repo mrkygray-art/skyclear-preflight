@@ -289,6 +289,9 @@ function explainStatus(st){
   // TFR within 5 miles (TFR import brief): named in the banner unless it is already the NO-GO reason
   const tn=st.tfrNear;
   if(tn&&!(k==="stop"&&(st.fails||[]).some(x=>x.id==="tfr")))why.push(tn.inside?(tn.above?"You are under a temporary flight restriction (TFR), "+tn.name+", that starts above drone altitude. Check its limits on tfr.faa.gov.":"You are inside a temporary flight restriction (TFR) area, "+tn.name+", that is not active during your planned flight. Check its times on tfr.faa.gov."):"A temporary flight restriction (TFR), "+tn.name+", is "+tn.mi+" miles away. Stay out of it.");
+  // TFR data that is stale or missing (data source disclosure check): say so in the banner
+  const ts=st.tfrStale;
+  if(ts)why.push(ts.notChecked?"TFRs could not be checked. Check tfr.faa.gov before flying.":ts.failed?"The last FAA TFR update failed, so TFR data may be out of date. Check tfr.faa.gov before flying.":"TFR data is "+ts.min+" min old. Check tfr.faa.gov before flying.");
   // Pilot tab fix button (Pilot tab brief section 4): LAANC first when that is the hold, then missing profile items
   const miss=st.missing||{};
   const laancHold=k==="hold"&&(!st.auth||["none","incomplete","expired","window","low"].includes(st.auth.state));

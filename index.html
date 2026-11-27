@@ -623,6 +623,9 @@ function explainStatus(st){
   // TFR within 5 miles (TFR import brief): named in the banner unless it is already the NO-GO reason
   const tn=st.tfrNear;
   if(tn&&!(k==="stop"&&(st.fails||[]).some(x=>x.id==="tfr")))why.push(tn.inside?(tn.above?"You are under a temporary flight restriction (TFR), "+tn.name+", that starts above drone altitude. Check its limits on tfr.faa.gov.":"You are inside a temporary flight restriction (TFR) area, "+tn.name+", that is not active during your planned flight. Check its times on tfr.faa.gov."):"A temporary flight restriction (TFR), "+tn.name+", is "+tn.mi+" miles away. Stay out of it.");
+  // TFR data that is stale or missing (data source disclosure check): say so in the banner
+  const ts=st.tfrStale;
+  if(ts)why.push(ts.notChecked?"TFRs could not be checked. Check tfr.faa.gov before flying.":ts.failed?"The last FAA TFR update failed, so TFR data may be out of date. Check tfr.faa.gov before flying.":"TFR data is "+ts.min+" min old. Check tfr.faa.gov before flying.");
   // Pilot tab fix button (Pilot tab brief section 4): LAANC first when that is the hold, then missing profile items
   const miss=st.missing||{};
   const laancHold=k==="hold"&&(!st.auth||["none","incomplete","expired","window","low"].includes(st.auth.state));
@@ -928,6 +931,10 @@ function tfrBannerNote(){
   const s=T.matches.map(t=>tfrSummary(t,ge)).filter(x=>!x.blocking&&(x.inside||x.mi<=TFR_NOTE_MI)).sort((a,b)=>a.mi-b.mi)[0];
   return s?{name:tfrName(s.t),mi:s.mi,inside:s.inside,above:s.insideAbove}:null;
 }
+// For the status banner: TFR data that is old, failed to refresh, or could not be loaded
+function tfrStaleNote(){const T=S.tfr;if(!T||T.state==="none")return null;
+  if(T.state==="error")return {notChecked:true};
+  return tfrIsStale(T)?{min:tfrAgeMin(T),failed:!!T.error}:null}
 function tfrQuery(L){
   const pl=reqPlan(ceilState(LAST.controlled)),r5=d=>new Date(Math.floor(d.getTime()/300000)*300000);
   let from=r5(pl.start),to=new Date(Math.max(from.getTime()+300000,pl.start.getTime()+Math.max(pl.durMin||60,5)*60000));
@@ -1190,7 +1197,7 @@ function srcTimes(W){
   const gridTxt=S.faa.state==="none"?"loading":S.faa.state==="error"||S.faa.gridErr?"not confirmed"+faaWhy():c.length?Math.min(...c.map(x=>x.ceil))+" ft"+(c.length>1?" (lowest of "+c.length+" cells)":"")+" · "+[...new Set(c.flatMap(x=>x.apts.map(a=>a.id)))].join(", ")+" · FAA UAS Facility Map, map effective "+eff+", fetched "+stamp(S.faa.at)+(S.faa.viaRelay?" via SkyClear relay":""):"no UAS Facility Map grid here · checked "+stamp(S.faa.at);
   return [["LAANC grid used",CSr.ft!=null?CSr.ft+" ft AGL · "+(ceilSrcTxt(CSr)||"FAA"):CSr.k==="nogrid"?"no grid here":"not confirmed"],["LAANC grid (live)",gridTxt],["LAANC grid (saved)",savedLine],["METAR",S.wx.mode==="live"?(oi?"observed "+stamp(oi.at)+" ("+agoTxt(oi.min)+")":"time not reported")+", fetched "+stamp(S.wx.at):S.wx.mode==="loading"?"loading":"SAMPLE, not live"],
     ["Airspace",S.faa.state==="live"?"FAA Class Airspace layer, fetched "+stamp(S.faa.at)+(S.faa.viaRelay?" via SkyClear relay":""):S.faa.state==="error"?"FAA, could not load at "+stamp(S.faa.at)+faaWhy():"loading"],
-    ["Ground elevation",S.elev.at?"USGS, fetched "+stamp(S.elev.at):S.loc.presetElev!=null&&S.loc.src==="preset"?"preset value":"not loaded"],
+    ["Ground elevation",S.elev.at?"USGS, fetched "+stamp(S.elev.at):(S.elev.err?"USGS "+S.elev.err+(groundElev().ft!=null?", using "+groundElev().src:"; no ground elevation"):S.loc.presetElev!=null&&S.loc.src==="preset"?"preset value":"not loaded")],
     ["TFR",S.tfr&&S.tfr.state==="live"?"FAA tfr.faa.gov (may be incomplete), "+S.tfr.total+" TFR"+(S.tfr.total===1?"":"s")+" checked, "+(S.tfr.matches.length?S.tfr.matches.length+" within "+TFR_AWARE_MI+" mi":"none found within "+TFR_AWARE_MI+" mi")+", "+tfrUpdated(S.tfr).toLowerCase()+(tfrIsStale(S.tfr)?" (STALE)":""):S.tfr&&S.tfr.state==="error"?"not checked ("+S.tfr.reason+")":"loading"],
     ["NOTAMs","not checked by SkyClear (FAA NOTAM API needs a key)"]];
 }
@@ -1231,7 +1238,7 @@ async function loadAll(){
     }
     render();
   })());
-  jobs.push((async()=>{try{const j=await fetchJson("https://epqs.nationalmap.gov/v1/json?x="+L.lon+"&y="+L.lat+"&units=Feet&wkid=4326&includeDate=false");if(tok!==S.token)return;const v=Number(j.value);if(isFinite(v)&&v>-500){S.elev={ft:Math.round(v),src:"USGS elevation service",at:new Date()};render()}}catch(e){}})());
+  jobs.push((async()=>{try{const j=await fetchJson("https://epqs.nationalmap.gov/v1/json?x="+L.lon+"&y="+L.lat+"&units=Feet&wkid=4326&includeDate=false");if(tok!==S.token)return;const v=Number(j.value);if(isFinite(v)&&v>-500){S.elev={ft:Math.round(v),src:"USGS elevation service",at:new Date()};render()}else throw new Error("no value")}catch(e){if(tok!==S.token)return;S.elev={ft:null,src:"",err:e&&e.name==="AbortError"?"timed out":"not reachable"};render()}})());
   jobs.push((async()=>{try{const j=await fetchJson("https://api.weather.gov/points/"+L.lat.toFixed(4)+","+L.lon.toFixed(4));if(tok!==S.token)return;const r=j.properties.relativeLocation.properties;S.place={text:r.city+", "+r.state,src:"NWS"};render()}catch(e){}})());
   jobs.push((async()=>{
     try{
@@ -1574,7 +1581,7 @@ function statusState(D,C,ov,controlled){
   const CS=ceilState(controlled),ge=groundElev();
   return {ov,controlled,fails:C.filter(c=>c.status==="fail"),cautions:C.filter(c=>c.status==="caution"),
     classes:[...new Set((S.faa.surface||[]).map(s=>s.cls))].length?[...new Set((S.faa.surface||[]).map(s=>s.cls))]:approxAir(D.list).map(h=>h.cls),
-    approx:S.faa.state!=="live",tfrNear:tfrBannerNote(),missing:{cert:!String(S.cert||"").trim(),reg:!String(S.reg||"").trim(),rid:!profileDone().rid},airports:causeAirports(D),ceil:{k:CS.k,ft:CS.ft,src:CS.src,eff:SAVED&&SAVED.effTxt||""},groundFt:ge.ft,auth:authNow(CS),
+    approx:S.faa.state!=="live",tfrNear:tfrBannerNote(),tfrStale:tfrStaleNote(),missing:{cert:!String(S.cert||"").trim(),reg:!String(S.reg||"").trim(),rid:!profileDone().rid},airports:causeAirports(D),ceil:{k:CS.k,ft:CS.ft,src:CS.src,eff:SAVED&&SAVED.effTxt||""},groundFt:ge.ft,auth:authNow(CS),
     left:MANUAL_IDS.filter(id=>!S.manual[id]).length,now:new Date()};
 }
 function wxSummary(D){const W=currentWx(D);if(!W||!W.m)return "";const m=W.m,oi=obsInfo(W.st.icao);
@@ -1751,7 +1758,7 @@ function laancNow(loading,controlled,cap0,gridOk,ge0,CS0){CS0=CS0||{};
   const pe=$("#laancprof");
   if(pe){const rid={std:"Standard Remote ID (built in)",mod:"Broadcast module attached",fria:"Flying inside an FRIA"}[S.ridType]||"";
     const r=(l,v)=>`<tr><th>${l}</th><td class="n">${v?esc(v):`<span class="muted">not entered</span>`}</td></tr>`;
-    pe.innerHTML=`<table class="tb kv"><tbody>${r("Pilot",S.pilot)}${r("Part 107 cert",S.cert)}${r("Aircraft",S.model)}${r("FAA registration",S.reg)}${r("Remote ID",rid+(S.ridId?(rid?" · ":"")+S.ridId:""))}</tbody></table><p class="note">${hasProfile()?"Saved on this device. Edit it on the Pre-flight tab.":"Fill this in once on the Pre-flight tab (Pilot, drone and Remote ID). It is saved on this device."} Aloft and AirHub ask for the same details when you set up your profile and aircraft.</p>`}
+    pe.innerHTML=`<table class="tb kv"><tbody>${r("Pilot",S.pilot)}${r("Part 107 cert",S.cert)}${r("Aircraft",S.model)}${r("FAA registration",S.reg)}${r("Remote ID",rid+(S.ridId?(rid?" · ":"")+S.ridId:""))}</tbody></table><p class="note">${hasProfile()?"Saved on this device. Edit it in the Pilot section above.":"Fill this in once in the Pilot, Aircraft and Remote ID sections above. It is saved on this device."} Aloft and AirHub ask for the same details when you set up your profile and aircraft.</p>`}
   const e=$("#laancnow");if(!e)return;
   const L=S.loc,pos=L.lat.toFixed(5)+", "+L.lon.toFixed(5);
   e.innerHTML=loading?`<p class="muted">Checking airspace…</p>`:controlled
@@ -1814,15 +1821,15 @@ function howHTML(){
     st("ok","Built in · LA, Las Vegas and Phoenix valid "+CHART.from+" to "+CHART.to),
     "The FAA's Los Angeles, San Francisco, Las Vegas and Phoenix sectional charts and the San Diego terminal chart, on top of an Esri street map. The Los Angeles, Las Vegas and Phoenix charts are the current FAA edition; the San Francisco and San Diego charts come from earlier FAA chart files."],
    ["Ground elevation and place name",
-    S.elev&&S.elev.at?st("ok","Working"):L.src==="preset"&&L.presetElev!=null?st("info","Preset value"):st("wait","Loading"),
-    "Ground height comes from the US Geological Survey, and the nearest town name from the National Weather Service."],
+    S.elev&&S.elev.at?st("ok","Working"):S.elev&&S.elev.err?st("warn","USGS "+S.elev.err+" · "+(groundElev().ft!=null?"using "+groundElev().src:"no ground elevation")):L.src==="preset"&&L.presetElev!=null?st("info","Preset value"):st("wait","Loading"),
+    "Ground height comes from the US Geological Survey, and the nearest town name from the National Weather Service. If USGS can't be reached, SkyClear says so and uses the preset's elevation or your phone's GPS altitude, and names which one."],
    ["Sunrise and sunset",
     st("ok","Calculated on your device"),
     "Worked out on your device from your position and the date; nothing is looked up."],
   ];
   return `<section class="grp" id="res-how"><h2>Where SkyClear gets its information<small>status for this visit</small></h2>
    <ul class="howlist">${items.map(([h,s,d])=>`<li><div class="howh"><b>${esc(h)}</b>${s}</div><p>${esc(d)}</p></li>`).join("")}</ul>
-   <p class="howfoot">When something can't be checked, SkyClear says so in amber instead of guessing. To look things up, SkyClear sends your map position to these services. Your pilot and drone details stay on your device. There are no accounts and no tracking.</p></section>`;
+   <p class="howfoot">When something can't be checked, SkyClear says so in amber instead of guessing. To look things up, SkyClear sends your map position to the FAA, USGS and the National Weather Service, and any address you type to OpenStreetMap (or the US Census Bureau). TFRs are checked on SkyClear's own server, so the FAA never sees your location for that check. Our host keeps normal server logs for a short time. Your pilot and drone details stay on this device. There are no accounts, ads or tracking.</p></section>`;
 }
 function howUpdate(){const el=$("#res-how-wrap");if(el)el.innerHTML=howHTML()}
 
@@ -1877,7 +1884,7 @@ function resHTML(){
   <section class="grp" id="res-107"><h2>Part 107 preflight reference<small>${ext("https://www.govinfo.gov/content/pkg/CFR-2025-title14-vol2/xhtml/CFR-2025-title14-vol2-sec107-49.html","14 CFR § 107.49")}</small></h2><div class="req">
    <p>Before flight, the remote pilot in command reviews, as applicable:</p>
    <ul><li>Local weather conditions</li><li>Local airspace and any flight restrictions</li><li>The location of persons and property on the surface, and other ground hazards</li><li>Crew roles, and emergency procedures briefed with everyone involved</li><li>Control links between the control station and the aircraft</li><li>Enough battery power for the planned flight</li><li>Any attached payload secured</li></ul>
-   <p class="note">Informational summary. Read the regulation at the link for the exact wording. SkyClear's checklist on the Pre-flight tab covers these items.</p></div></section>`;
+   <p class="note">Informational summary. Read the regulation at the link for the exact wording. SkyClear's <a href="#pilot:checklist" data-goto="pilot:checklist">pre-flight checklist on the Pilot &amp; LAANC tab</a> covers these items.</p></div></section>`;
 }
 // The Weather quick link follows the pilot's position: the 3 nearest reporting stations.
 function resWxLink(D){const a=$("#qk-wx"),s=$("#qk-wx-ids");if(!a||!D||!D.wxStations||!D.wxStations.length)return;const ids=D.wxStations.map(x=>x.icao).join(",");a.href="https://aviationweather.gov/data/metar/?ids="+ids;s.textContent="METARs near you: "+ids.replace(/,/g,", ")}

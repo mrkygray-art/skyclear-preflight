@@ -164,6 +164,13 @@ t("banner names a TFR within 5 miles; not when it is already the NO-GO reason", 
   assert.doesNotMatch(stop.why, /miles away/);
   assert.equal(explainStatus({ ...base, ov: { k: "hold", t: "Hold", d: "x" }, auth: { state: "none" } }).why.includes("TFR"), false);
 });
+t("banner says when TFR data is stale, failed to refresh, or could not be checked", () => {
+  const h = (ts) => explainStatus({ ...base, ov: { k: "hold", t: "Hold", d: "x" }, auth: { state: "none" }, tfrStale: ts }).why;
+  assert.match(h({ min: 21, failed: false }), /TFR data is 21 min old\. Check tfr\.faa\.gov before flying\./);
+  assert.match(h({ min: 3, failed: true }), /last FAA TFR update failed/);
+  assert.match(h({ notChecked: true }), /TFRs could not be checked/);
+  assert.doesNotMatch(h(null), /tfr\.faa\.gov before flying/);
+});
 t("checklist is a Pilot tab section in routing", () => assert.deepEqual(parseHash("#pilot:checklist"), { tab: "pilot", section: "checklist" }));
 t("no two top-level functions in the app share a name (the clash that emptied the Requirements tab)", () => {
   const fs = require("fs"), path = require("path");
