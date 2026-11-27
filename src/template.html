@@ -162,7 +162,29 @@ table.bd{width:calc(100% - 32px);margin:2px 16px 4px;border-collapse:collapse;fo
 .actions button:hover{filter:brightness(1.25)}
 .copybox{margin:0 16px 14px;background:#fff;border:1px solid var(--paper-line);border-radius:5px;padding:8px;font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;max-height:160px;overflow:auto;display:none}
 
-.tabs{display:flex;flex-wrap:wrap;gap:4px;margin-left:auto}
+.tabbar{position:sticky;top:0;z-index:1100;background:#0b141c;border-bottom:1px solid var(--line)}
+.tabbar-in{display:flex;align-items:center;gap:10px}
+.tabs{display:flex;flex-wrap:nowrap;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{min-height:44px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.tcount{display:inline-flex;align-items:center;font:600 11px var(--mono);letter-spacing:0;text-transform:none;color:#2a1c00;background:var(--warn);border-radius:999px;padding:1px 7px;line-height:1.5}.tcount[hidden]{display:none}
+@media(max-width:620px){.tcount .tc-txt{display:none}.tcount{padding:1px 6px}}
+.tcheck{color:var(--go);font-size:14px;line-height:1}
+.schip{flex:none;min-height:34px;padding:4px 12px;border-radius:999px;border:1px solid;background:transparent;font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer}
+.schip.s-go{color:var(--go);border-color:var(--go)}.schip.s-warn{color:var(--warn);border-color:var(--warn)}.schip.s-hold{color:var(--hold);border-color:var(--hold)}.schip.s-stop{color:var(--stop);border-color:var(--stop)}.schip.s-info{color:var(--accent);border-color:var(--accent)}
+@media(max-width:620px){.tabbar .tabs button{font-size:12.5px;padding:6px 5px;letter-spacing:0;border-bottom-width:3px;gap:4px}.tabbar .tabs{gap:0}.tabbar-in{gap:4px;padding:0 6px}.schip{font-size:11.5px;padding:2px 7px;min-height:28px}}
+.psubnav{margin:4px 0 12px;font-size:14px;color:var(--muted)}.psubnav a{color:var(--accent);font-weight:600;display:inline-block;padding:8px 2px}
+.ptodo{margin:0 0 12px;padding:10px 12px;border-radius:6px;border:1px solid var(--warn);background:rgba(245,184,61,.07);font-size:14px}.ptodo a{color:var(--warn);margin-right:10px;display:inline-block}.ptodo.ok{border-color:var(--go);background:rgba(63,207,142,.07);color:var(--go)}
+.psec h2 .pok{color:var(--go)}.psec h2 .pmiss{color:var(--warn)}
+.psum{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;font-size:15px}.pchk{color:var(--go)}
+.psum button,.pdone button{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 14px;cursor:pointer;color:var(--ink);font-weight:600;min-height:40px}
+.pdone{padding:0 16px 12px;text-align:right}
+.bfix{margin-top:2px;background:var(--accent);color:#04202f;border:0;border-radius:6px;padding:10px 14px;font-weight:700;cursor:pointer;justify-self:start;max-width:100%;min-height:44px}
+.rq-edit{color:var(--accent);font-size:12px;margin-left:6px}
+.precsum{display:none}
+#psec-guides{margin-bottom:0}#psec-guides+#pilotinfo .reqhead{display:none}
+@media (max-width:960px){body.tab-pilot #card{display:none}.precsum{display:block;margin:8px 0 18px;padding:12px 14px;border:1px solid var(--line);border-radius:8px;color:var(--ink)}}
 .tabs button{background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);padding:8px 14px;cursor:pointer;font-family:var(--display);font-weight:600;font-size:18px;letter-spacing:.05em;text-transform:uppercase}
 .tabs button[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent)}
 .mapbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:16px;overflow:hidden}
@@ -214,8 +236,8 @@ table.bd{width:calc(100% - 32px);margin:2px 16px 4px;border-collapse:collapse;fo
 .lnow.ok{border-color:var(--go);background:rgba(63,207,142,.08)}.lnow.ok>b{color:var(--go)}
 .lnow span{color:var(--muted);font-size:14px}.lnow span b{color:var(--ink)}
 .lsmall{font-size:13px;padding:0 16px 12px}
-.btxt{display:grid;gap:6px}.btxt p{margin:0}.bact{font-weight:600}.bwhy{opacity:.92;line-height:1.45}.bwhy b{font-weight:700}
-.bmore{color:inherit;font-weight:600;text-decoration:underline;text-underline-offset:3px;width:max-content;max-width:100%}
+.btxt{display:grid;gap:6px;min-width:0}.btxt p{margin:0}.bact{font-weight:600}.bwhy{opacity:.92;line-height:1.45}.bwhy b{font-weight:700}
+.bmore{color:inherit;font-weight:600;text-decoration:underline;text-underline-offset:3px;justify-self:start;max-width:100%}
 .reqsec>summary{list-style:none;cursor:pointer}.reqsec>summary::-webkit-details-marker{display:none}
 .reqsec>summary h2::after{content:"▾";margin-left:8px;opacity:.6}.reqsec:not([open])>summary h2::after{content:"▸"}
 .rq-lead{padding:10px 16px 0;margin:0}.rq-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0 16px;padding:0 16px}
@@ -269,7 +291,7 @@ a.uss:hover{border-color:var(--accent)}a.uss b{color:var(--accent)}
 <body>
 <header>
   <div class="wrap">
-    <div class="top"><div class="brand">Sky<span>Clear</span> <span style="color:var(--muted);font-weight:600;font-size:18px">Pre-Flight · SoCal</span></div><span class="badge" id="badge">Loading</span><nav class="tabs" aria-label="Sections"><button data-tab="pre" aria-current="page">Pre-flight</button><button data-tab="laanc" aria-current="false">LAANC</button><button data-tab="req" aria-current="false">Requirements</button><button data-tab="res" aria-current="false">Resources</button></nav></div>
+    <div class="top"><div class="brand">Sky<span>Clear</span> <span style="color:var(--muted);font-weight:600;font-size:18px">Pre-Flight · SoCal</span></div><span class="badge" id="badge">Loading</span></div>
     <div class="locbar">
       <button class="pri" id="gps">Use my GPS</button>
       <div class="addrf"><label for="addr">Address or place</label><input id="addr" type="search" autocomplete="street-address" placeholder="Street address, city, or a place name" enterkeyhint="search"></div>
@@ -283,19 +305,23 @@ a.uss:hover{border-color:var(--accent)}a.uss b{color:var(--accent)}
     <div id="addrlist" hidden></div>
   </div>
 </header>
+<div class="tabbar"><div class="wrap tabbar-in">
+  <nav class="tabs" role="tablist" aria-label="Sections"><button role="tab" data-tab="pre" aria-current="page" aria-selected="true">Pre-flight</button><button role="tab" data-tab="pilot" aria-current="false" aria-selected="false" tabindex="-1">Pilot &amp; LAANC <span id="pdot" class="tcount" hidden></span></button><button role="tab" data-tab="req" aria-current="false" aria-selected="false" tabindex="-1">Requirements</button><button role="tab" data-tab="res" aria-current="false" aria-selected="false" tabindex="-1">Resources</button></nav>
+  <button type="button" class="schip s-info" id="schip" data-tab="pre" aria-label="Status. Go to the Pre-flight tab">…</button>
+</div></div>
 <div class="wrap">
 <main id="view-pre">
-  <div><div id="banner"></div>
+  <div id="flightcol"><div id="banner"></div>
    <div class="mapbox"><div class="maptools"><button id="pinbtn" aria-pressed="false">Drop pin</button><button id="pinok" class="pinok" hidden>Confirm pin</button><button id="recenter">Recenter</button>
     <label>Chart <input type="checkbox" id="chartvis" checked></label><label>Ceiling grid <input type="checkbox" id="ceilvis"></label><label>Opacity <input type="range" id="chartop" min="0" max="100" value="85" aria-label="Chart opacity"><span id="chartopv">85%</span></label></div>
     <div id="map" role="application" aria-label="Map of your position on the sectional chart"></div>
     <div class="maplegend ceillegend" id="ceillegend" hidden></div>
     <div class="maplegend"><span><i style="background:#12b76a"></i>You</span><span><i style="background:#1a9bff"></i>Class D, about 4 NM</span><span><i style="background:#c04bff"></i>Class C, about 5 NM</span><span><i style="background:#7b5cff"></i>Class B, near LAX, about 6 NM</span><span>Dotted ring = search radius. Pinch, scroll or use + / − to zoom.</span></div></div>
    <div id="groups"></div></div>
+  <div id="pilotcol" hidden><div id="pilotdyn"></div><section class="grp" id="psec-guides"><h2>LAANC guides and providers<small>how to request it</small></h2></section><div id="pilotinfo"></div></div>
   <aside class="card" id="card" aria-label="Pre-flight record"></aside>
 </main>
 <div id="view-req" hidden></div>
-<div id="view-laanc" hidden></div>
 <div id="view-res" hidden></div>
 </div>
 <script src="leaflet.js"></script>

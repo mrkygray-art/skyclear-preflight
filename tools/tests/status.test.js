@@ -109,4 +109,57 @@ t("sunTimes: afternoon in Los Angeles is daytime (old bug: jumped to tomorrow)",
   const now = new Date("2026-11-26T14:55:00-08:00"), s = sunTimes(33.902, -118.367, now);
   assert.ok(now >= s.sunrise && now <= s.sunset, s.sunrise.toISOString() + " " + s.sunset.toISOString());
 });
+// ---- Pilot tab: hash routing, badge/missing logic, fixLink ----
+const { parseHash, tabHash, pilotIssues } = require("../../src/core.js");
+t("hash routing: tabs, sections, old links and unknowns", () => {
+  assert.deepEqual(parseHash("#pilot"), { tab: "pilot", section: null });
+  assert.deepEqual(parseHash("#pilot:laanc"), { tab: "pilot", section: "laanc" });
+  assert.deepEqual(parseHash("#laanc"), { tab: "pilot", section: "laanc" });
+  assert.deepEqual(parseHash("#flight"), { tab: "pre", section: null });
+  assert.deepEqual(parseHash("#preflight"), { tab: "pre", section: null });
+  assert.deepEqual(parseHash(""), { tab: "pre", section: null });
+  assert.deepEqual(parseHash("#resources"), { tab: "res", section: null });
+  assert.deepEqual(parseHash("#pilot:nonsense"), { tab: "pilot", section: null });
+  assert.deepEqual(parseHash("#garbage"), { tab: "pre", section: null });
+  assert.equal(tabHash("pilot", "rid"), "#pilot:rid");
+  assert.equal(tabHash("pre"), "#preflight");
+});
+const full = { pilot: "Sample Pilot", cert: "1234567", model: "Quad", reg: "FA3TEST", ridType: "std", ridId: "RID1" };
+t("pilot issues: complete profile and no LAANC need = no dot", () => assert.deepEqual(pilotIssues(full, { needed: false }), []));
+t("pilot issues: each missing item has a plain reason and its section", () => {
+  const r = pilotIssues({ ...full, cert: "", reg: "", ridId: "" }, { needed: true, done: false });
+  assert.deepEqual(r.map(x => x.id), ["cert", "reg", "rid", "laanc"]);
+  assert.equal(r.find(x => x.id === "rid").msg, "Remote ID is missing.");
+  assert.equal(r.find(x => x.id === "laanc").section, "laanc");
+});
+t("pilot issues: FRIA needs no Remote ID serial; finished LAANC request is fine", () => {
+  assert.deepEqual(pilotIssues({ ...full, ridType: "fria", ridId: "" }, { needed: true, done: true }), []);
+});
+t("fixLink: HOLD for LAANC goes to the LAANC request", () => {
+  const r = explainStatus({ ...base, ov: { k: "hold", t: "Hold", d: "x" }, auth: { state: "none" } });
+  assert.deepEqual(r.fixLink, { label: "Go to LAANC request", tab: "pilot", section: "laanc" });
+});
+t("fixLink: missing certificate, then registration, then Remote ID, with a why sentence", () => {
+  const ov = { k: "info", t: "Incomplete", d: "x" };
+  let r = explainStatus({ ...base, left: 1, ov, auth: { state: "none" }, missing: { cert: true, reg: true, rid: true } });
+  assert.deepEqual(r.fixLink, { label: "Add your pilot certificate", tab: "pilot", section: "pilot" });
+  assert.match(r.why, /pilot certificate number is missing\. Add it on the Pilot & LAANC tab/);
+  r = explainStatus({ ...base, left: 1, ov, auth: { state: "none" }, missing: { reg: true, rid: true } });
+  assert.equal(r.fixLink.section, "aircraft");
+  r = explainStatus({ ...base, left: 1, ov, auth: { state: "none" }, missing: { rid: true } });
+  assert.deepEqual(r.fixLink, { label: "Add your Remote ID", tab: "pilot", section: "rid" });
+  assert.deepEqual(explainStatus({ ...base, left: 1, ov, auth: { state: "none" }, missing: {} }).fixLink, { label: "Finish the pre-flight checklist", tab: "pilot", section: "checklist" });
+  assert.equal(explainStatus({ ...base, left: 0, ov: { k: "go", t: "Go", d: "x" }, auth: { state: "none" }, missing: {} }).fixLink, null);
+});
+t("fixLink: none on NO-GO (the blocking reason comes first)", () => {
+  assert.equal(explainStatus({ ...base, ov: { k: "stop", t: "No-go", d: "x" }, fails: [{ id: "tfr", label: "TFR", value: "Inside" }], missing: { cert: true } }).fixLink, null);
+});
+t("checklist is a Pilot tab section in routing", () => assert.deepEqual(parseHash("#pilot:checklist"), { tab: "pilot", section: "checklist" }));
+t("no two top-level functions in the app share a name (the clash that emptied the Requirements tab)", () => {
+  const fs = require("fs"), path = require("path");
+  const src = ["core.js", "ui.js"].map(f => fs.readFileSync(path.join(__dirname, "../../src", f), "utf8")).join("\n");
+  const names = [...src.matchAll(/^(?:async\s+)?function\s+([A-Za-z0-9_$]+)\s*\(/gm)].map(m => m[1]);
+  const dup = names.filter((x, i) => names.indexOf(x) !== i);
+  assert.deepEqual(dup, [], "duplicate function names: " + dup.join(", "));
+});
 console.log("\n" + n + " tests passed");

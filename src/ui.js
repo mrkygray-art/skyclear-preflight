@@ -38,7 +38,7 @@ const tfmt=d=>d?d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}):"n/a
 
 const S={
   loc:{lat:PRESETS[0].lat,lon:PRESETS[0].lon,acc:null,alt:null,src:"preset",label:PRESETS[0].name,presetElev:PRESETS[0].elev},
-  radius:5,wxSel:0,manual:{},laanc:"",laancAlt:"",laancFrom:"",laancTo:"",phone:"",email:"",reqOpen:null,req:{start:"",durH:"1",durM:"0",alt:"",purpose:"",purposeOther:""},pilot:"",cert:"",certDate:"",trnDate:"",model:"",reg:"",regExp:"",ridType:"",ridId:"",
+  radius:5,wxSel:0,manual:{},pedit:{pilot:false,aircraft:false,rid:false},laanc:"",laancAlt:"",laancFrom:"",laancTo:"",phone:"",email:"",reqOpen:null,req:{start:"",durH:"1",durM:"0",alt:"",purpose:"",purposeOther:""},pilot:"",cert:"",certDate:"",trnDate:"",model:"",reg:"",regExp:"",ridType:"",ridId:"",
   scanAt:new Date(),scanId:newId(),
   gps:{state:"idle",msg:""},
   wx:{mode:"loading",at:null,stations:[],metar:{},taf:{},err:""},
@@ -350,7 +350,7 @@ function render(){
   const altNote0=CS0.k==="zero"?`<p class="altwarn zero">No automatic LAANC here: further coordination or waiver needed. The FAA LAANC grid is 0 ft at this spot.</p>`:CS0.k==="nogrid"?`<p class="altwarn">No UAS Facility Map grid here, inside controlled airspace: LAANC can't approve this spot automatically. Use an FAA authorization from DroneZone; do not assume 400 ft.</p>`:CS0.k==="unk"?`<p class="altwarn">Ceiling not confirmed. The FAA data could not be loaded${esc(faaWhy())}. Do not assume 400 ft; use the altitude in your LAANC approval, or press Refresh.${CS0.sv&&CS0.sv.k==="outside"?" This spot is outside the saved FAA data area, so there is no fallback.":""}</p>`:"";
   const altl=`<div class="altline"><div class="flyup${flyCls}"><span>Fly up to</span><b>${flyTxt}</b>${flySrc?`<small class="flysrc">${esc(flySrc)}</small>`:""}</div><div><span>Equals</span><b>${ge0.ft==null||cap0==null?"? ft MSL":(ge0.ft+cap0)+" ft MSL"}</b></div><div><span>Ground here</span><b>${ge0.ft==null?"?":ge0.ft} ft MSL</b></div><div class="authl ${controlled?"need":"none"}"><span>Authorization</span><b>${controlled?(S.laanc?"LAANC "+esc(S.laanc.toUpperCase()):"LAANC needed"):"None needed"}</b></div></div>${altNote0}${savedNote}`;
   laancNow(loading,controlled,cap0,gridOk,ge0,CS0);resWxLink(D);howUpdate();
-  $("#banner").innerHTML=loading?`<div class="banner b-info"><div class="big">Scanning…</div><p>Reading position, airspace and weather.</p></div>`:(()=>{const X=explainStatus(statusState(D,C,ov,controlled));return `<div class="banner b-${ov.k}"><div class="big">${esc(X.status)}</div><div class="btxt"><p class="bact">${esc(X.action)}</p>${X.why?`<p class="bwhy"><b>Why:</b> ${esc(X.why)}</p>`:""}<a class="bmore" href="${X.learnMoreAnchor}" data-jump="${X.learnMoreAnchor.slice(1)}">Check the Airspace section below for more information.</a></div></div>`})()+altl;
+  $("#banner").innerHTML=loading?`<div class="banner b-info"><div class="big">Scanning…</div><p>Reading position, airspace and weather.</p></div>`:(()=>{const X=explainStatus(statusState(D,C,ov,controlled));return `<div class="banner b-${ov.k}"><div class="big">${esc(X.status)}</div><div class="btxt"><p class="bact">${esc(X.action)}</p>${X.why?`<p class="bwhy"><b>Why:</b> ${esc(X.why)}</p>`:""}${X.fixLink?`<button type="button" class="bfix" data-goto="${X.fixLink.tab}:${X.fixLink.section}">${esc(X.fixLink.label)} →</button>`:""}</div></div>`})()+altl;
   $("#badge").textContent=S.wx.mode==="live"?"Live weather":S.wx.mode==="loading"?"Loading":"Preview · sample weather";
   $("#badge").className="badge "+(S.wx.mode==="live"?"ok":"");
   let html=wherePanel(D)+aroundPanel(D)+facilitiesPanel(D)+wxPanel(D);
@@ -360,10 +360,8 @@ function render(){
     if(g==="Altitude")body+=`<div class="viz"><div>${altViz()}</div><div><div class="l">Height above ground and above sea level</div><p class="d2">The aircraft altitude readout is usually height above the takeoff point. Add ground elevation to compare with MSL charts.</p></div></div>`;
     body+=rows.map(rowHTML).join("");
     if(g==="Airspace")body+=`<p class="tfrlinks">TFRs and NOTAMs: <a href="https://tfr.faa.gov/" target="_blank" rel="noopener">FAA TFR list ↗</a> · <a href="https://notams.aim.faa.gov/notamSearch/" target="_blank" rel="noopener">FAA NOTAM Search ↗</a>${S.tfr&&S.tfr.near?S.tfr.near.map(t=>` · <a href="${esc(t.link)}" target="_blank" rel="noopener">TFR ${esc(t.id)} ↗</a>`).join(""):""}</p>`;
-    if(g==="Airspace"&&controlled)body+=fileLaancHTML(ceilState(controlled).k==="zero");
     html+=`<section class="grp"${g==="Airspace"?' id="sec-airspace"':""}><h2>${g==="Location"?"Position and chart":g}<small>${rows.filter(c=>c.status==="pass").length}/${rows.length} clear</small></h2>${body}</section>`;
   });
-  {const i=html.indexOf('<section class="grp" id="sec-airspace"'),j=html.indexOf("</section>",i)+10;if(i>=0)html=html.slice(0,j)+reqHTML(D,controlled,ceilState(controlled))+html.slice(j);}
   const done=MANUAL_IDS.filter(id=>S.manual[id]).length;
   const today=new Date();today.setHours(0,0,0,0);
   const addM=(ds,n)=>{if(!ds)return null;const d=new Date(ds+"T00:00:00");if(isNaN(d))return null;d.setMonth(d.getMonth()+n);return d};
@@ -371,24 +369,10 @@ function render(){
   const trnDue=addM(S.trnDate,24)&&(()=>{const d=addM(S.trnDate,25);d.setDate(1);d.setDate(0);return d})(); // end of 24th calendar month
   const regEnd=S.regExp?new Date(S.regExp+"T00:00:00"):null;
   const fld=(id,label,ph,val,extra)=>`<div><label for="${id}">${label}</label><input id="${id}" value="${esc(val)}" placeholder="${ph}" autocomplete="off" ${extra||""}>`;
-  let m=`<section class="grp"><h2>Pilot, drone and Remote ID<small>${done}/${MANUAL_IDS.length} confirmed</small></h2><div class="bar"><i style="width:${done/MANUAL_IDS.length*100}%"></i></div>
-  <div class="saved">${hasProfile()?`<span>✓ Saved on this device. It fills in automatically next time.</span><button id="profclear" type="button">Clear saved info</button>`:`<span>Fill this in once. SkyClear saves it on this device only and fills it in every time you open the app.</span>`}</div>
-  <div class="sub">Remote Pilot Certificate</div>
-  <div class="fields"><div><label for="pilot">Pilot name</label><input id="pilot" value="${esc(S.pilot)}" placeholder="Full name" autocomplete="off"></div>
-   ${fld("cert","Certificate number","Part 107 certificate no.",S.cert)}</div>
-   <div><label for="certDate">Certificate issued</label><input id="certDate" type="date" value="${esc(S.certDate)}"></div>
-   <div><label for="trnDate">Last recurrent training</label><input id="trnDate" type="date" value="${esc(S.trnDate)}">${dstat(trnDue,"Current through")}</div></div>
-  <div class="sub">Drone registration</div>
-  <div class="fields">${fld("model","Aircraft make and model","DJI Mavic 3, Skydio X10…",S.model)}</div>
-   ${fld("reg","FAA registration number","FA3xxxxxxx",S.reg)}</div>
-   <div><label for="regExp">Registration expires</label><input id="regExp" type="date" value="${esc(S.regExp)}">${dstat(regEnd,"Valid until")}</div></div>
-  <div class="sub">Remote ID</div>
-  <div class="fields"><div><label for="ridType">Compliance method</label><select id="ridType"><option value="">Choose…</option>${[["std","Standard Remote ID (built in)"],["mod","Broadcast module attached"],["fria","Flying inside an FRIA"]].map(o=>`<option value="${o[0]}" ${S.ridType===o[0]?"selected":""}>${o[1]}</option>`).join("")}</select></div>
-   ${fld("ridId","Remote ID serial or session ID","From the aircraft or module label",S.ridId)}</div></div>`;
-  MANUAL.forEach(g=>{m+=`<div class="sub">${g.g}</div>`;g.items.forEach(([id,t,s])=>{m+=`<label class="todo"><input type="checkbox" data-id="${id}" ${S.manual[id]?"checked":""}><span><b>${esc(t)}</b>${s?`<small>${esc(s)}</small>`:""}</span></label>`})});
-  html+=m+"</section>";
+  // The Pre-flight checklist lives on the Pilot & LAANC tab (pilotHTML). Pre-flight shows a short pointer to it.
+  {const left=MANUAL_IDS.length-done;html+=`<section class="grp" id="sec-checklist"><h2>Pre-flight checklist<small>${done}/${MANUAL_IDS.length} confirmed</small></h2><p class="pad">${left?`${left} item${left>1?"s":""} still to confirm. `:"All items confirmed. "}<a href="#pilot:checklist" data-goto="pilot:checklist">Open the checklist on the Pilot &amp; LAANC tab →</a></p></section>`;}
   const ae=document.activeElement,aid=ae&&ae.id,caret=ae&&ae.selectionStart;
-  const sy=window.scrollY;$("#groups").innerHTML=html;window.scrollTo(0,sy);
+  const CSx=ceilState(controlled),sy=window.scrollY;$("#groups").innerHTML=html;$("#pilotdyn").innerHTML=pilotHTML(D,controlled,CSx);window.scrollTo(0,sy);updateTabBar(ov,controlled,CSx);
   if(aid&&["laanc","pilot","cert","certDate","trnDate","model","reg","regExp","ridType","ridId","reqDurH","reqDurM","reqAlt","reqPurposeOther","reqPhone","reqEmail","laancAlt"].includes(aid)){const e=document.getElementById(aid);if(e){e.focus();try{e.setSelectionRange(caret,caret)}catch(_){}}}
   const pk=$("#pinok");if(pk)pk.hidden=!(S.loc.pin&&!S.loc.pinOk);
   renderCard();
@@ -728,25 +712,36 @@ function ceilLegend(){
 }
 
 /* ---- tabs ---- */
-const TABS={pre:"preflight",laanc:"laanc",req:"requirements",res:"resources"};
 function showTab(){
-  const h=(location.hash||"").replace("#",""),t=Object.keys(TABS).find(k=>TABS[k]===h)||"pre";
-  $("#view-pre").hidden=t!=="pre";$("#view-req").hidden=t!=="req";$("#view-laanc").hidden=t!=="laanc";$("#view-res").hidden=t!=="res";
-  document.querySelectorAll("[data-tab]").forEach(b=>b.setAttribute("aria-current",b.dataset.tab===t?"page":"false"));
+  const R=parseHash(location.hash),t=R.tab;
+  $("#view-pre").hidden=!(t==="pre"||t==="pilot");$("#flightcol").hidden=t!=="pre";$("#pilotcol").hidden=t!=="pilot";
+  $("#view-req").hidden=t!=="req";$("#view-res").hidden=t!=="res";
+  document.body.classList.toggle("tab-pilot",t==="pilot");
+  document.querySelectorAll(".tabs [data-tab]").forEach(b=>{const on=b.dataset.tab===t;b.setAttribute("aria-current",on?"page":"false");b.setAttribute("aria-selected",on?"true":"false");b.tabIndex=on?0:-1});
   $(".locbar").style.display=t==="pre"?"":"none";$("#gpsmsg").style.display=t==="pre"?"":"none";$("#addrlist").style.display=t==="pre"?"":"none";
   if(t==="pre")mapSize();
-  window.scrollTo(0,0);
+  const target=R.section&&document.getElementById("psec-"+R.section);
+  if(target){const bar=document.querySelector(".tabbar");requestAnimationFrame(()=>window.scrollTo(0,target.getBoundingClientRect().top+scrollY-(bar?bar.offsetHeight:0)-8))}
+  else window.scrollTo(0,0);
 }
 window.addEventListener("hashchange",showTab);
-document.addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b){e.preventDefault();location.hash=TABS[b.dataset.tab]||"preflight"}});
+document.addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b){e.preventDefault();goTo(b.dataset.tab,null);return}
+  const g=e.target.closest("[data-goto]");if(g){e.preventDefault();const [tb,sc]=g.dataset.goto.split(":");if(sc&&S.pedit[sc]===false&&["pilot","aircraft","rid"].includes(sc))S.pedit[sc]=true,render();goTo(tb,sc||null);return}
+  const pe=e.target.closest("[data-pedit]");if(pe){S.pedit[pe.dataset.pedit]=true;render();const f=document.querySelector("#psec-"+pe.dataset.pedit+" input,#psec-"+pe.dataset.pedit+" select");if(f)f.focus();return}
+  const pd=e.target.closest("[data-pdone]");if(pd){S.pedit[pd.dataset.pdone]=false;render();return}});
+// Keyboard: arrow keys move between tabs (WAI-ARIA tabs pattern)
+document.addEventListener("keydown",e=>{const b=e.target.closest&&e.target.closest(".tabs [role=tab]");if(!b)return;
+  const all=[...document.querySelectorAll(".tabs [role=tab]")],i=all.indexOf(b);let n=null;
+  if(e.key==="ArrowRight")n=all[(i+1)%all.length];else if(e.key==="ArrowLeft")n=all[(i-1+all.length)%all.length];else if(e.key==="Home")n=all[0];else if(e.key==="End")n=all[all.length-1];
+  if(n){e.preventDefault();n.focus();goTo(n.dataset.tab,null)}});
 
 function reqHTML(){
   const card=(h,b)=>`<section class="grp"><h2>${h}</h2><div class="req">${b}</div></section>`;
   const offices=[["Los Angeles (El Segundo)","777 S. Aviation Blvd, Suite 150, El Segundo, CA 90245","(424) 405-7870","(424) 405-7866"],["Van Nuys","16501 Sherman Way, Suite 330, Van Nuys, CA 91406","(818) 267-3300","(818) 786-9732"],["Long Beach","5001 Airport Plaza Dr, Suite 100, Long Beach, CA 90815","(562) 377-5400","(562) 377-5448"],["Riverside","6961 Flight Road, Riverside, CA 92504","(951) 276-6701","(951) 689-4309"],["San Diego","9665 Granite Ridge Dr, Suite 200, San Diego, CA 92123","(858) 810-2626","(858) 810-2637"]];
   return `<div class="reqhead"><h1>Requirements</h1><p>What a drone pilot needs in place before flying, and what this app checks for you. None of this needs a visit or a call to an FAA office.</p></div>
-  ${card("Remote Pilot Certificate",`<p>The pilot passes the FAA knowledge test and applies through IACRA using FAA Form 8710-13. Part of that application, the identity check, can be done with a certified flight instructor or another authorized person. A FSDO is not needed for it.</p><p class="note">In this app: certificate number, issue date and recurrent training date are recorded on the record card.</p>`)}
-  ${card("Drone registration and Remote ID",`<p>The drone is registered on the FAA DroneZone site, and the Remote ID rules apply. The registration number goes on the outside of the aircraft, and the aircraft broadcasts Remote ID (built in, with an attached module, or inside an FRIA).</p><p class="note">In this app: registration number and expiry, the Remote ID method and ID, and a broadcast check.</p>`)}
-  ${card("Airspace authorization",`<p>In controlled airspace (Class B, C, D or E surface areas) the pilot gets approval through LAANC. LAANC is built into approved apps and is also available through DroneZone. Much of the LA basin is controlled airspace near LAX, Hawthorne and Torrance, so this comes up often.</p><p class="note">In this app: the airspace checks tell you when authorization is needed, and the record keeps the LAANC number.</p>`)}
+  ${card("Remote Pilot Certificate",`<p>The pilot passes the FAA knowledge test and applies through IACRA using FAA Form 8710-13. Part of that application, the identity check, can be done with a certified flight instructor or another authorized person. A FSDO is not needed for it.</p><p class="note">In this app: enter the certificate number, issue date and recurrent training date on the Pilot &amp; LAANC tab; they go on the record card.</p>`)}
+  ${card("Drone registration and Remote ID",`<p>The drone is registered on the FAA DroneZone site, and the Remote ID rules apply. The registration number goes on the outside of the aircraft, and the aircraft broadcasts Remote ID (built in, with an attached module, or inside an FRIA).</p><p class="note">In this app: registration number and expiry, the Remote ID method and ID (Pilot &amp; LAANC tab), and a broadcast check in the Pre-flight checklist.</p>`)}
+  ${card("Airspace authorization",`<p>In controlled airspace (Class B, C, D or E surface areas) the pilot gets approval through LAANC. LAANC is built into approved apps and is also available through DroneZone. Much of the LA basin is controlled airspace near LAX, Hawthorne and Torrance, so this comes up often.</p><p class="note">In this app: the airspace checks tell you when authorization is needed, the LAANC request on the Pilot &amp; LAANC tab prepares it, and the record keeps the LAANC number.</p>`)}
   ${card("Waivers",`<p>Night flights are allowed with the right training and lighting. Flying over people, beyond line of sight, or multiple aircraft at once may need a waiver or specific compliance. Those requests go through DroneZone, not a FSDO.</p>`)}
   ${card("Data sources",`<ul><li><b>Airspace, towers and frequencies:</b> ${esc(CHART.name)}, effective ${esc(CHART.from)} to ${esc(CHART.to)}. Map layers: the full Los Angeles, Las Vegas and Phoenix Sectionals from the FAA's georeferenced chart files (FAA digital VFR charts, same edition), plus the San Francisco Sectional and San Diego Terminal Area Chart from the FAA PDFs.</li><li><b>METAR and TAF:</b> aviationweather.gov data API. It is free with no key, limited to 100 requests a minute, and it does not allow calls straight from a web page, so the live app needs a small server-side proxy. Until then the weather shows labeled sample text.</li><li><b>Ground elevation:</b> USGS elevation service. <b>Place name:</b> National Weather Service.</li><li><b>Address search:</b> OpenStreetMap (Nominatim, © OpenStreetMap contributors), then the US Census Bureau geocoder if OpenStreetMap finds nothing. The address you type is sent to them through SkyClear's server to look it up and is not stored by SkyClear.</li><li><b>TFRs:</b> FAA tfr.faa.gov (active list, TFR shapes and details) through SkyClear's server; TFRs within 5 miles are drawn on the map. Nationwide TFRs without a map shape are listed, not placed.</li><li><b>Not read by this app:</b> NOTAMs (the FAA NOTAM API needs a registered key) and special use airspace. Use the FAA NOTAM Search and the sectional chart.</li></ul>`)}
   <section class="grp"><h2>FAA offices, Southern California<small>reference only</small></h2><p class="pad muted" style="padding-bottom:0">Flight Standards District Offices. A drone pilot does not check in with them for a flight. They are listed here so you have the contact details.</p><div class="scroll"><table class="tb"><thead><tr><th>Office</th><th>Address</th><th>Phone</th><th>Fax</th></tr></thead><tbody>${offices.map(o=>`<tr><td><b>${esc(o[0])}</b></td><td>${esc(o[1])}</td><td class="n">${esc(o[2])}</td><td class="n">${esc(o[3])}</td></tr>`).join("")}</tbody></table></div></section>`;
@@ -787,7 +782,7 @@ function fileLaancHTML(zero){
   const list=zero?LAANC_USS.filter(u=>u[2][1]):LAANC_USS;
   return `<div class="filelaanc"><div class="flh"><b>File LAANC</b><span>${zero?"The grid is 0 ft here, so near-real-time LAANC can't approve this spot. Part 107 pilots can send a further coordination request (these providers offer it) or apply in FAA DroneZone.":"FAA-approved LAANC providers. Each opens in a new tab; SkyClear sends them nothing."}</span></div>
    <div class="usslist">${list.map(btn).join("")}</div>
-   <p class="flf">From the FAA's approved provider list, checked Nov 25, 2026. <a href="${FAA_LAANC_PAGE}" target="_blank" rel="noopener">Current FAA list ↗</a> · Step-by-step guides on the <a href="#laanc">LAANC tab</a>.</p></div>`;
+   <p class="flf">From the FAA's approved provider list, checked Nov 25, 2026. <a href="${FAA_LAANC_PAGE}" target="_blank" rel="noopener">Current FAA list ↗</a> · Step-by-step guides are below the LAANC request on the <a href="#pilot:guides">Pilot &amp; LAANC tab</a>.</p></div>`;
 }
 
 /* ---- Status banner + LAANC request (UI side; the rules live in core.js) ---- */
@@ -813,7 +808,7 @@ function statusState(D,C,ov,controlled){
   const CS=ceilState(controlled),ge=groundElev();
   return {ov,controlled,fails:C.filter(c=>c.status==="fail"),cautions:C.filter(c=>c.status==="caution"),
     classes:[...new Set((S.faa.surface||[]).map(s=>s.cls))].length?[...new Set((S.faa.surface||[]).map(s=>s.cls))]:approxAir(D.list).map(h=>h.cls),
-    approx:S.faa.state!=="live",airports:causeAirports(D),ceil:{k:CS.k,ft:CS.ft,src:CS.src,eff:SAVED&&SAVED.effTxt||""},groundFt:ge.ft,auth:authNow(CS),
+    approx:S.faa.state!=="live",missing:{cert:!String(S.cert||"").trim(),reg:!String(S.reg||"").trim(),rid:!profileDone().rid},airports:causeAirports(D),ceil:{k:CS.k,ft:CS.ft,src:CS.src,eff:SAVED&&SAVED.effTxt||""},groundFt:ge.ft,auth:authNow(CS),
     left:MANUAL_IDS.filter(id=>!S.manual[id]).length,now:new Date()};
 }
 function wxSummary(D){const W=currentWx(D);if(!W||!W.m)return "";const m=W.m,oi=obsInfo(W.st.icao);
@@ -844,21 +839,22 @@ function reqText(D,CS,plan,v){
    "REMINDER: LAANC covers airspace only. Check TFRs, NOTAMs and weather separately before you fly."];
   return L1.filter(x=>x!=="").join("\n").replace(/\n(PILOT|AIRCRAFT|LOCATION|FLIGHT|WEATHER|REMINDER)/g,"\n\n$1");
 }
-function reqHTML(D,controlled,CS){
+function laancReqHTML(D,controlled,CS){
   if(!controlled)return "";
   const plan=reqPlan(CS),v=validateRequest(plan,reqCtx(D,CS)),au=authNow(CS);
   const holdLaanc=LAST.C&&LAST.C.some(c=>c.id==="laanc"&&c.status==="hold");
   const open=S.reqOpen==null?holdLaanc:S.reqOpen;
   const ge=groundElev().ft,L=S.loc;
-  const auto=(k,val,miss)=>`<tr><th>${k}</th><td>${val?esc(val):`<span class="unk">${esc(miss||"missing")}</span>`}</td></tr>`;
+  const auto=(k,val,miss,edit)=>`<tr><th>${k}</th><td>${val?esc(val):`<span class="unk">${esc(miss||"missing")}</span>`}${edit?` <a href="#pilot:${edit}" data-goto="pilot:${edit}" class="rq-edit">Edit</a>`:""}</td></tr>`;
   const rid={std:"Standard Remote ID (built in)",mod:"Broadcast module",fria:"FRIA"}[S.ridType]||"";
   // live cells use FAA ids (HHR), the saved file ICAO ids (KHHR): merge them as one airport
   const facMap=new Map();[...(S.faa.cells||[]).flatMap(c=>c.apts.map(a=>[a.id,a.name])),...((CS.sv&&CS.sv.k==="ok"&&CS.sv.fac)||[])].forEach(([id,nm])=>{const k=String(id).replace(/^K(?=[A-Z0-9]{3}$)/,"");if(!facMap.has(k))facMap.set(k,k+" "+niceAptName(nm))});
   const fac=[...facMap.values()];
   const autos=[
-   auto("Pilot",S.pilot,"Add it in the Pilot, drone and Remote ID section"),auto("Remote Pilot Cert",S.cert,"Add it in the Pilot section"),
-   auto("Aircraft",S.model,"Add it in the Drone registration section"),auto("Registration",S.reg,"Add it in the Drone registration section"),
-   auto("Remote ID",rid+(S.ridId?" "+S.ridId:""),"Pick it in the Remote ID section"),
+   auto("Pilot",S.pilot,"Add it in the Pilot section above","pilot"),auto("Remote Pilot Cert",S.cert,"Add it in the Pilot section above","pilot"),
+   auto("Contact phone",S.phone,"Add it in the Pilot section above","pilot"),
+   auto("Aircraft",S.model,"Add it in the Aircraft section above","aircraft"),auto("Registration",S.reg,"Add it in the Aircraft section above","aircraft"),
+   auto("Remote ID",rid+(S.ridId?" "+S.ridId:""),"Pick it in the Remote ID section above","rid"),
    auto("Launch point",L.lat.toFixed(5)+", "+L.lon.toFixed(5)+(L.src==="gps"?" · GPS ±"+Math.round(L.acc)+" m":" · "+posSrc(L))),
    auto("Ground elevation",ge!=null?ge+" ft MSL":"","still loading"),
    auto("Airspace",statusState(D,LAST.C||[],LAST.ov||{k:"info"},controlled).classes.map(c=>"Class "+c).join(", "),"FAA lookup not loaded"),
@@ -879,11 +875,9 @@ function reqHTML(D,controlled,CS){
     <div><label for="reqAlt">Requested altitude (ft AGL)</label><input id="reqAlt" type="number" min="1" max="400" placeholder="${CS.ft>0?CS.ft:""}" value="${esc(S.req.alt!==""?S.req.alt:(CS.ft>0?CS.ft:""))}"></div>
     <div><label for="reqPurpose">Purpose</label><select id="reqPurpose"><option value="">Choose…</option>${PURPOSES.map(x=>`<option ${S.req.purpose===x?"selected":""}>${esc(x)}</option>`).join("")}</select></div>
     ${S.req.purpose==="Other (type below)"?`<div><label for="reqPurposeOther">Purpose (your words)</label><input id="reqPurposeOther" value="${esc(S.req.purposeOther)}" autocomplete="off"></div>`:""}
-    <div><label for="reqPhone">Contact phone</label><input id="reqPhone" type="tel" value="${esc(S.phone)}" autocomplete="tel"></div>
-    <div><label for="reqEmail">Email (optional)</label><input id="reqEmail" type="email" value="${esc(S.email)}" autocomplete="email"></div>
    </div></div></div>
    <ul class="rq-msgs">${msgs}</ul>
-   <div class="rq-actions"><button id="reqcopy" type="button" ${v.ok?"":"disabled"}>Copy request details</button><a href="#laanc" class="rq-open">Open your LAANC app (providers and guides) →</a><span class="muted">${v.ok?(v.fc?"Ready · Further Coordination":"Ready to copy"):"Fix the items above to copy"}</span></div>
+   <div class="rq-actions"><button id="reqcopy" type="button" ${v.ok?"":"disabled"}>Copy request details</button><a href="#pilot:guides" data-goto="pilot:guides" class="rq-open">Open your LAANC app (providers and guides below) →</a><span class="muted">${v.ok?(v.fc?"Ready · Further Coordination":"Ready to copy"):"Fix the items above to copy"}</span></div>
    <pre class="copybox rq-copybox" id="reqcopybox"></pre>
    <h3 class="rq-h">After approval</h3>
    <div class="fields rq-fields">
@@ -898,6 +892,78 @@ function reqCopy(){
   if(!v.ok)return;
   const txt=reqText(D,CS,plan,v),box=$("#reqcopybox"),show=()=>{box.style.display="block";box.textContent=txt};
   try{navigator.clipboard.writeText(txt).then(()=>{const b=$("#reqcopy");if(b)b.textContent="Copied";show();setTimeout(()=>{const b=$("#reqcopy");if(b)b.textContent="Copy request details"},1600)}).catch(show)}catch(e){show()}
+}
+
+/* ---- Pilot & LAANC tab (Pilot tab brief): Pilot, Aircraft, Remote ID, LAANC request, then the LAANC guides ---- */
+const RIDNAMES={std:"Standard Remote ID (built in)",mod:"Broadcast module attached",fria:"Flying inside an FRIA"};
+function profileDone(){return {
+  pilot:!!(String(S.pilot||"").trim()&&String(S.cert||"").trim()),
+  aircraft:!!(String(S.model||"").trim()&&String(S.reg||"").trim()),
+  rid:!!(S.ridType&&(S.ridType==="fria"||String(S.ridId||"").trim()))}}
+function checklistIssue(){const left=MANUAL_IDS.filter(id=>!S.manual[id]).length;return left?[{id:"checklist",section:"checklist",msg:"Pre-flight checklist: "+left+" item"+(left>1?"s":"")+" left."}]:[]}
+function laancNeedState(controlled,CS){
+  if(!controlled)return {needed:false,done:true};
+  if(authNow(CS).state==="ok")return {needed:true,done:true};
+  const D=LAST.D;return {needed:true,done:D?validateRequest(reqPlan(CS),reqCtx(D,CS)).ok:false};
+}
+function goTo(tab,section){const h=tabHash(tab,section);if(location.hash===h)showTab();else location.hash=h}
+function checklistHTML(){
+  const done=MANUAL_IDS.filter(id=>S.manual[id]).length;
+  let m=`<section class="grp psec" id="psec-checklist"><h2>Pre-flight checklist<small>${done}/${MANUAL_IDS.length} confirmed</small></h2><div class="bar"><i style="width:${done/MANUAL_IDS.length*100}%"></i></div>
+  <p class="pad muted pchk-note">Confirm these for every flight. They reset when you reload SkyClear.</p>`;
+  MANUAL.forEach(g=>{m+=`<div class="sub">${g.g}</div>`;g.items.forEach(([id,t,s2])=>{m+=`<label class="todo"><input type="checkbox" data-id="${id}" ${S.manual[id]?"checked":""}><span><b>${esc(t)}</b>${s2?`<small>${esc(s2)}</small>`:""}</span></label>`})});
+  return m+"</section>";
+}
+function pilotHTML(D,controlled,CS){
+  const done=profileDone(),ed=S.pedit,today=new Date();today.setHours(0,0,0,0);
+  // A section only collapses when it was complete when you arrived or you pressed Done: never while you are typing in it.
+  Object.keys(done).forEach(k=>{if(!done[k])ed[k]=true});
+  const addM=(ds,n)=>{if(!ds)return null;const d=new Date(ds+"T00:00:00");if(isNaN(d))return null;d.setMonth(d.getMonth()+n);return d};
+  const dstat=(d,okTxt)=>d?(d<today?`<small class="bad">Expired ${d.toLocaleDateString()}</small>`:`<small class="ok">${okTxt} ${d.toLocaleDateString()}</small>`):"";
+  const trnDue=addM(S.trnDate,24)&&(()=>{const d=addM(S.trnDate,25);d.setDate(1);d.setDate(0);return d})();
+  const regEnd=S.regExp?new Date(S.regExp+"T00:00:00"):null;
+  const fld=(id,label,ph,val,extra)=>`<div><label for="${id}">${label}</label><input id="${id}" value="${esc(val)}" placeholder="${ph}" autocomplete="off" ${extra||""}></div>`;
+  const issues=pilotIssues(S,laancNeedState(controlled,CS)).concat(checklistIssue());
+  const sec=(key,title,summary,body)=>{
+    const collapsed=done[key]&&!ed[key];
+    return `<section class="grp psec" id="psec-${key}"><h2>${title}${done[key]?'<small class="pok">✓ complete</small>':'<small class="pmiss">needs details</small>'}</h2>${collapsed?
+      `<div class="psum"><span>${summary} <b class="pchk">✓</b></span><button type="button" data-pedit="${key}">Edit</button></div>`:
+      body+(done[key]?`<div class="pdone"><button type="button" data-pdone="${key}">Done</button></div>`:"")}</section>`;
+  };
+  const last4=v=>{v=String(v||"");return v.length>4?"ending "+v.slice(-4):v};
+  const pilotBody=`<div class="fields">
+     <div><label for="pilot">Pilot name</label><input id="pilot" value="${esc(S.pilot)}" placeholder="First and last name" autocomplete="off"></div>
+     ${fld("cert","Remote Pilot Certificate number (Part 107)","Certificate no.",S.cert)}
+     <div><label for="certDate">Certificate issued</label><input id="certDate" type="date" value="${esc(S.certDate)}"></div>
+     <div><label for="trnDate">Last recurrent training</label><input id="trnDate" type="date" value="${esc(S.trnDate)}">${dstat(trnDue,"Current through")}</div>
+     <div><label for="reqPhone">Contact phone</label><input id="reqPhone" type="tel" value="${esc(S.phone)}" autocomplete="tel"></div>
+     <div><label for="reqEmail">Email (optional)</label><input id="reqEmail" type="email" value="${esc(S.email)}" autocomplete="email"></div></div>`;
+  const acBody=`<div class="fields">${fld("model","Aircraft make and model","DJI Mavic 3, Skydio X10…",S.model)}${fld("reg","FAA registration number","FA3xxxxxxx",S.reg)}
+     <div><label for="regExp">Registration expires</label><input id="regExp" type="date" value="${esc(S.regExp)}">${dstat(regEnd,"Valid until")}</div></div>`;
+  const ridBody=`<div class="fields"><div><label for="ridType">Compliance method</label><select id="ridType"><option value="">Choose…</option>${Object.entries(RIDNAMES).map(([k,v])=>`<option value="${k}" ${S.ridType===k?"selected":""}>${v}</option>`).join("")}</select></div>
+     ${fld("ridId","Remote ID serial or session ID",S.ridType==="fria"?"Not needed inside an FRIA":"From the aircraft or module label",S.ridId)}</div>`;
+  const laancSec=controlled?laancReqHTML(D,controlled,CS):`<section class="grp"><h2>LAANC request</h2><p class="pad muted">No LAANC is needed at this spot: the FAA shows no controlled airspace at the surface here. If you move the pin into controlled airspace, the request form appears here.</p></section>`;
+  const recLine=`<a href="#preflight" class="precsum" data-tab="pre">Pre-flight record: <b>${esc(LAST.ov?LAST.ov.t:"")}</b> · view it on the Pre-flight tab →</a>`;
+  return `<div class="reqhead"><h1>Pilot &amp; LAANC</h1><p>Your details, your drone and your LAANC request. Pilot, aircraft and Remote ID are saved on this device; the LAANC request is for this flight only.</p></div>
+   <nav class="psubnav" aria-label="Pilot and LAANC sections"><a href="#pilot:pilot" data-goto="pilot:pilot">Pilot</a> · <a href="#pilot:aircraft" data-goto="pilot:aircraft">Aircraft</a> · <a href="#pilot:rid" data-goto="pilot:rid">Remote ID</a> · <a href="#pilot:checklist" data-goto="pilot:checklist">Checklist</a> · <a href="#pilot:laanc" data-goto="pilot:laanc">LAANC</a> · <a href="#pilot:guides" data-goto="pilot:guides">Guides</a></nav>
+   ${issues.length?`<div class="ptodo"><b>Still needed:</b> ${issues.map(i=>`<a href="${tabHash("pilot",i.section)}" data-goto="pilot:${i.section}">${esc(i.msg)}</a>`).join(" ")}</div>`:`<div class="ptodo ok"><b>✓ Everything on this tab is complete.</b></div>`}
+   <div class="saved">${hasProfile()?`<span>✓ Saved on this device. It fills in automatically next time.</span><button id="profclear" type="button">Clear saved info</button>`:`<span>Fill this in once. SkyClear saves it on this device only.</span>`}</div>
+   ${sec("pilot","Pilot",esc(S.pilot)+" · Cert "+esc(last4(S.cert))+(S.phone?" · "+esc(S.phone):""),pilotBody)}
+   ${sec("aircraft","Aircraft",esc(S.model)+" · "+esc(S.reg),acBody)}
+   ${sec("rid","Remote ID",esc(RIDNAMES[S.ridType]||"")+(S.ridId?" · "+esc(S.ridId):""),ridBody)}
+   ${checklistHTML()}
+   <div id="psec-laanc">${laancSec}</div>
+   ${recLine}`;
+}
+function updateTabBar(ov,controlled,CS){
+  const chip=$("#schip");if(chip){chip.textContent=S.wx.mode==="loading"?"…":ov.t;chip.className="schip s-"+ov.k;chip.setAttribute("aria-label","Status "+ov.t+". Go to the Pre-flight tab")}
+  const dot=$("#pdot");if(!dot)return;
+  // Count only the set-once items (pilot, aircraft, Remote ID) and an unfinished LAANC request. The per-flight
+  // checklist is left out: it has its own count, and it resets every visit. Nothing shows when the count is zero.
+  const iss=pilotIssues(S,laancNeedState(controlled,CS));
+  dot.hidden=!iss.length;
+  if(iss.length){dot.innerHTML=iss.length+'<span class="tc-txt">&nbsp;to do</span>';dot.title=iss.map(i=>i.msg).join(" ");dot.setAttribute("aria-label",iss.length+" to do: "+dot.title)}
+  else{dot.textContent="";dot.removeAttribute("title");dot.removeAttribute("aria-label")}
 }
 
 /* ---- LAANC tab ---- */
@@ -940,8 +1006,6 @@ function laancHTML(){
    <h3>How to request</h3><ol class="steps">${x.steps.map(s=>`<li>${esc(s)}</li>`).join("")}</ol></div></section>`;
   return `<div class="reqhead"><h1>LAANC</h1><p>LAANC is the FAA's automatic approval for flying in controlled airspace near airports. You don't call anyone: you ask through an FAA-approved app, and at or below the grid altitude the answer usually comes back in seconds.</p></div>
   <section class="grp"><h2>Your spot right now<small>from the Pre-flight scan</small></h2><div class="req" id="laancnow"></div></section>
-  <section class="grp"><h2>Your pilot and drone info<small>for the LAANC app</small></h2><div class="req" id="laancprof"></div></section>
-  <section class="grp"><h2>Authorization number<small>after approval</small></h2><div class="fields"><div><label for="laanc2">LAANC authorization number</label><input id="laanc2" autocomplete="off" placeholder="Paste it here after approval" value="${esc(S.laanc)}"></div></div><p class="muted lsmall">Same field as on the Pre-flight tab. Once entered, the Airspace check passes and the number goes on your pre-flight record.</p></section>
   ${LAANC_APPS.map(card).join("")}
   <section class="grp"><h2>All FAA-approved LAANC providers<small>from faa.gov</small></h2>${fileLaancHTML(false).replace('<b>File LAANC</b>','<b>Providers</b>')}</section>
   <section class="grp"><h2>Good to know</h2><div class="req"><ul>
@@ -1020,8 +1084,8 @@ function resHTML(){
   </nav>
   <div id="res-how-wrap"></div>
   ${sec("res-airspace","Airspace and authorization",[
-    row(ext(aloft.web[1],"Aloft Air Control"),"Airspace checks and LAANC authorization. Step-by-step guide on the <a href=\"#laanc\">LAANC tab</a>."),
-    row(ext(airhub.web[1],"AirHub Portal (Airspace Link)"),"Airspace checks and authorization. Step-by-step guide on the <a href=\"#laanc\">LAANC tab</a>."),
+    row(ext(aloft.web[1],"Aloft Air Control"),"Airspace checks and LAANC authorization. Step-by-step guide on the <a href=\"#pilot:guides\">Pilot &amp; LAANC tab</a>."),
+    row(ext(airhub.web[1],"AirHub Portal (Airspace Link)"),"Airspace checks and authorization. Step-by-step guide on the <a href=\"#pilot:guides\">Pilot &amp; LAANC tab</a>."),
     row(ext("https://www.faa.gov/uas/getting_started/temporary_flight_restrictions","FAA Temporary Flight Restrictions"),"Check active and upcoming TFRs. Verify the boundaries, altitude and effective times for your flight."),
     row(ext(RES.notam,"FAA NOTAM Search"),"Check notices for the flight area and nearby airports. Example identifiers: KLAX, KHHR, KBUR, KTOA, KSMO, KLGB."),
     row(ext("https://www.faa.gov/uas/commercial_operators/uas_facility_maps","FAA UAS Facility Maps"),"The altitude grid at your exact flight location. Get FAA authorization where it is required.")])}
@@ -1098,12 +1162,12 @@ document.addEventListener("toggle",e=>{if(e.target&&e.target.id==="reqsec")S.req
 document.addEventListener("click",e=>{
   if(e.target.closest("#reqcopy")){reqCopy();return}
   const j=e.target.closest("[data-jump]");if(j){e.preventDefault();const t=document.getElementById(j.dataset.jump);if(t)t.scrollIntoView({behavior:"smooth",block:"start"});return}
-  const o=e.target.closest(".rq-open");if(o){e.preventDefault();location.hash="laanc"}});
+});
 document.addEventListener("input",e=>{if(e.target.id==="laanc2"){S.laanc=e.target.value;render();return}if(e.target.id==="laanc"){const o=$("#laanc2");if(o)o.value=e.target.value}const id=e.target.id;if(PROFILE_KEYS.includes(id)){S[id]=e.target.value;saveProfile()}if(["laanc","pilot","cert","certDate","trnDate","model","reg","regExp","ridType","ridId"].includes(id)){S[id]=e.target.value;render()}});
 $("#lat").value=S.loc.lat.toFixed(5);$("#lon").value=S.loc.lon.toFixed(5);
 loadProfile();
 $("#view-req").innerHTML=reqHTML();
-$("#view-laanc").innerHTML=laancHTML();
+$("#pilotinfo").innerHTML=laancHTML();
 $("#view-res").innerHTML=resHTML();
 loadSaved();
 mapInit();showTab();

@@ -242,7 +242,7 @@ const CAUTION_TXT={
 };
 function cautionTxt(x){const f=CAUTION_TXT[x.id];return f?f(x):String(x.label||"").toLowerCase()+" ("+x.value+")"}
 function explainStatus(st){
-  const out={status:st.ov.t,action:st.ov.d,why:"",learnMoreAnchor:"#sec-airspace"};
+  const out={status:st.ov.t,action:st.ov.d,why:"",learnMoreAnchor:"#sec-airspace",fixLink:null};
   const c=st.ceil||{},g=st.groundFt,why=[];
   const where=st.airports&&st.airports.length?" near "+listAnd(st.airports.slice(0,3).map(aptLabel)):"";
   const cls=[...new Set(st.classes||[])].filter(k=>CLASS_DEF[k]).sort();
@@ -276,7 +276,7 @@ function explainStatus(st){
     });
     why.push("This changes to GO only when "+(f.length>1?"these are":"this is")+" fixed.");
   }else if(k==="info"){
-    why.push("The checks SkyClear can do on its own"+(st.cautions&&st.cautions.length?" are done, with "+st.cautions.length+" caution"+(st.cautions.length>1?"s":"")+" to read":" passed")+". "+st.left+" pilot confirmation"+(st.left>1?"s":"")+" in the Pilot, drone and Remote ID section "+(st.left>1?"are":"is")+" still not ticked.");
+    why.push("The checks SkyClear can do on its own"+(st.cautions&&st.cautions.length?" are done, with "+st.cautions.length+" caution"+(st.cautions.length>1?"s":"")+" to read":" passed")+". "+st.left+" pilot confirmation"+(st.left>1?"s":"")+" in the Pre-flight checklist on the Pilot & LAANC tab "+(st.left>1?"are":"is")+" still not ticked.");
     if(st.auth&&st.auth.state==="ok")why.push("Your LAANC authorization "+st.auth.num+" covers this flight up to "+st.auth.alt+" ft AGL until "+fmtTimeLocal(st.auth.to)+".");
     else if(!st.controlled&&c.ft!=null)why.push("No FAA airspace permission is needed here. Stay at or below "+ceilPhrase(c.ft,g)+".");
   }else if(k==="warn"){
@@ -286,8 +286,45 @@ function explainStatus(st){
     if(st.auth&&st.auth.state==="ok")why.push("Your LAANC authorization "+st.auth.num+" covers this flight. Fly no higher than "+st.auth.alt+" ft AGL"+(g!=null?" ("+(g+st.auth.alt)+" ft MSL)":"")+", and land by "+fmtTimeLocal(st.auth.to)+".");
     else if(c.ft!=null)why.push("No FAA airspace permission is needed here. Stay at or below "+ceilPhrase(c.ft,g)+".");
   }
+  // Pilot tab fix button (Pilot tab brief section 4): LAANC first when that is the hold, then missing profile items
+  const miss=st.missing||{};
+  const laancHold=k==="hold"&&(!st.auth||["none","incomplete","expired","window","low"].includes(st.auth.state));
+  if(laancHold)out.fixLink={label:"Go to LAANC request",tab:"pilot",section:"laanc"};
+  else if(k!=="stop"){
+    if(miss.cert){out.fixLink={label:"Add your pilot certificate",tab:"pilot",section:"pilot"};why.push("Your pilot certificate number is missing. Add it on the Pilot & LAANC tab.")}
+    else if(miss.reg){out.fixLink={label:"Add your aircraft details",tab:"pilot",section:"aircraft"};why.push("Your aircraft registration number is missing. Add it on the Pilot & LAANC tab.")}
+    else if(miss.rid){out.fixLink={label:"Add your Remote ID",tab:"pilot",section:"rid"};why.push("Your Remote ID is missing. Add it on the Pilot & LAANC tab.")}
+    else if(k==="info"&&st.left>0)out.fixLink={label:"Finish the pre-flight checklist",tab:"pilot",section:"checklist"};
+  }
   const sv=savedSentence(c);if(sv&&k!=="stop"||sv&&(st.fails||[]).some(x=>x.id==="ceil"))why.push(sv);
   out.why=why.join(" ");
+  return out;
+}
+
+/* Tabs and hash routing (Pilot tab brief). "#pilot:laanc" = Pilot tab scrolled to a section.
+   Old links keep working: "#laanc" opens the Pilot & LAANC tab at the LAANC request; "#flight" = "#preflight". */
+const TAB_HASH={pre:"preflight",pilot:"pilot",req:"requirements",res:"resources"};
+const PILOT_SECTIONS=["pilot","aircraft","rid","checklist","laanc","guides"];
+function parseHash(h){
+  h=String(h||"").replace(/^#/,"").toLowerCase();
+  const [a,b]=h.split(":");
+  if(a==="laanc")return {tab:"pilot",section:"laanc"};
+  if(a==="flight"||a==="preflight"||a==="")return {tab:"pre",section:null};
+  const tab=Object.keys(TAB_HASH).find(k=>TAB_HASH[k]===a);
+  if(!tab)return {tab:"pre",section:null};
+  return {tab,section:tab==="pilot"&&PILOT_SECTIONS.includes(b)?b:null};
+}
+function tabHash(tab,section){return "#"+(TAB_HASH[tab]||"preflight")+(section?":"+section:"")}
+/* What the Pilot tab still needs. p = profile fields; laanc = {needed, done} (needed: LAANC applies here; done: request
+   complete or a covering authorization is entered). Returns [{id, section, msg}] in plain words. */
+function pilotIssues(p,laanc){
+  const out=[];
+  if(!String(p.pilot||"").trim())out.push({id:"pilot",section:"pilot",msg:"Your name is missing."});
+  if(!String(p.cert||"").trim())out.push({id:"cert",section:"pilot",msg:"Your pilot certificate number is missing."});
+  if(!String(p.model||"").trim())out.push({id:"model",section:"aircraft",msg:"The aircraft make and model is missing."});
+  if(!String(p.reg||"").trim())out.push({id:"reg",section:"aircraft",msg:"The aircraft registration number is missing."});
+  if(!p.ridType||(p.ridType!=="fria"&&!String(p.ridId||"").trim()))out.push({id:"rid",section:"rid",msg:"Remote ID is missing."});
+  if(laanc&&laanc.needed&&!laanc.done)out.push({id:"laanc",section:"laanc",msg:"Your LAANC request isn't finished."});
   return out;
 }
 
@@ -297,12 +334,12 @@ function validateRequest(req,ctx){
   const missing=[],errors=[],warnings=[],now=ctx.now||new Date();
   const need=(ok,field,where)=>{if(!ok)missing.push({field,where})};
   const nm=String(ctx.pilot||"").trim().split(/\s+/);
-  need(nm.length>=2,"Pilot first and last name","Pilot, drone and Remote ID section");
-  need(!!ctx.cert,"Remote Pilot Certificate number","Pilot, drone and Remote ID section");
-  need(!!ctx.certDate,"Certificate issue date","Pilot, drone and Remote ID section");
-  need(!!ctx.model,"Aircraft make and model","Pilot, drone and Remote ID section");
-  need(!!ctx.reg,"FAA registration number","Pilot, drone and Remote ID section");
-  need(!!ctx.ridType,"Remote ID method","Pilot, drone and Remote ID section");
+  need(nm.length>=2,"Pilot first and last name","the Pilot section on the Pilot & LAANC tab");
+  need(!!ctx.cert,"Remote Pilot Certificate number","the Pilot section on the Pilot & LAANC tab");
+  need(!!ctx.certDate,"Certificate issue date","the Pilot section on the Pilot & LAANC tab");
+  need(!!ctx.model,"Aircraft make and model","the Aircraft section on the Pilot & LAANC tab");
+  need(!!ctx.reg,"FAA registration number","the Aircraft section on the Pilot & LAANC tab");
+  need(!!ctx.ridType,"Remote ID method","the Remote ID section on the Pilot & LAANC tab");
   need(isFinite(ctx.lat)&&isFinite(ctx.lon),"Launch position","the location bar at the top");
   need(ctx.groundFt!=null,"Ground elevation","wait for it to load, or press Refresh");
   need(ctx.classes&&ctx.classes.length>0,"Airspace class","wait for the FAA airspace lookup, or press Refresh");
@@ -312,7 +349,7 @@ function validateRequest(req,ctx){
   need(req.durMin>0,"Duration","this section");
   need(req.alt>0,"Requested altitude","this section");
   need(!!String(req.purpose||"").trim(),"Purpose of flight","this section");
-  need(String(req.phone||"").replace(/\D/g,"").length>=10,"Contact phone number","this section");
+  need(String(req.phone||"").replace(/\D/g,"").length>=10,"Contact phone number","the Pilot section on the Pilot & LAANC tab");
   if(req.start instanceof Date&&!isNaN(req.start)){
     if(req.start.getTime()<now.getTime()-60000)errors.push("The start time is in the past. Pick a time from now on.");
     if(req.start.getTime()>now.getTime()+90*86400000)errors.push("LAANC requests can be made up to 90 days ahead. Pick an earlier start.");
@@ -345,4 +382,4 @@ function authState(a,plan,now){
   return {state:"ok",num,alt:a.alt,from,to:a.to};
 }
 
-if(typeof module!=="undefined")module.exports={explainStatus,validateRequest,authState,niceAptName,AIRPORTS,PRESETS,distMi,bearing,compass,around,approxAir,sunTimes,decodeMetar,decodeTaf,sampleWx,flightCat,splitMetars,splitTafs,stationOf,dms,CHART,NM,RING,ringInfo};
+if(typeof module!=="undefined")module.exports={parseHash,tabHash,pilotIssues,TAB_HASH,explainStatus,validateRequest,authState,niceAptName,AIRPORTS,PRESETS,distMi,bearing,compass,around,approxAir,sunTimes,decodeMetar,decodeTaf,sampleWx,flightCat,splitMetars,splitTafs,stationOf,dms,CHART,NM,RING,ringInfo};
